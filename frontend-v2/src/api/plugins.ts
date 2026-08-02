@@ -27,6 +27,9 @@ export const pluginApi = {
   mirrors: () => api<PluginMirrorsResponse>('/plugins/mirrors'),
   content: () => api<PluginContentResponse>('/plugins/content'),
   worlds: () => api<WorldListResponse>('/worlds'),
+  docs: (pluginId: string) => api<{ ok: boolean; found?: boolean; name?: string; content?: string; error?: string }>(
+    pluginPath(pluginId, '/docs'),
+  ),
   updateConfig: (pluginId: string, payload: Record<string, unknown>) =>
     api(pluginPath(pluginId, '/config'), { method: 'PUT', body: JSON.stringify(payload) }),
   restart: (pluginId: string) => api(pluginPath(pluginId, '/restart'), { method: 'POST' }),

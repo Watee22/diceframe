@@ -590,6 +590,8 @@ export const en = {
   permissions: 'Permissions',
   arrayInputPlaceholder: 'One per line, or comma-separated; duplicates are removed',
   guideDocs: 'Guide',
+  pluginNoDocs: 'This plugin does not provide documentation',
+  pluginLoading: 'Loading…',
   saveConfig: 'Save Config',
   restartPlugin: 'Restart Plugin',
   updateFromStore: 'Update from Store',

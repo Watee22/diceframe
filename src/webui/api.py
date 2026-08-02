@@ -119,6 +119,9 @@ class WebAPI:
     def plugin_detail(self, plugin_id: str) -> dict[str, Any]:
         return plugins.plugin_detail(self, plugin_id)
 
+    def read_plugin_docs(self, plugin_id: str) -> dict[str, Any]:
+        return plugins.read_plugin_docs(self, plugin_id)
+
     async def update_plugin_config(self, plugin_id: str, changes: dict[str, Any]) -> dict[str, Any]:
         return await plugins.update_plugin_config(self, plugin_id, changes)
 

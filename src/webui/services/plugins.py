@@ -24,6 +24,10 @@ def plugin_detail(api: "WebAPI", plugin_id: str) -> dict[str, Any]:
     if not api._plugins: return {"ok": False, "error": "插件宿主未启用"}
     return {"ok": True, **api._plugins.public_detail(plugin_id)}
 
+def read_plugin_docs(api: "WebAPI", plugin_id: str) -> dict[str, Any]:
+    if not api._plugins: return {"ok": False, "error": "插件宿主未启用"}
+    return api._plugins.read_docs(plugin_id)
+
 async def update_plugin_config(api: "WebAPI", plugin_id: str, changes: dict[str, Any]) -> dict[str, Any]:
     if not api._plugins: return {"ok": False, "error": "插件宿主未启用"}
     return {"ok": True, **await api._plugins.update_config(plugin_id, changes)}

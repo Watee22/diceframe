@@ -70,6 +70,46 @@ async def test_config_normalizes_lists_and_masks_secrets(tmp_path):
     assert "secret-value" not in (tmp_path / "data" / "example" / "config.json").read_text(encoding="utf-8")
 
 
+def test_read_docs_returns_markdown_content(tmp_path):
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, manifest_extra={"docs": "README.md"})
+    (plugins / "example" / "README.md").write_text("# 说明\n\n使用指南", encoding="utf-8")
+    host = PluginHost(plugins, tmp_path / "data")
+    host.discover()
+
+    result = host.read_docs("example")
+
+    assert result["ok"] is True
+    assert result["found"] is True
+    assert "# 说明" in result["content"]
+    assert result["name"] == "README.md"
+
+
+def test_read_docs_missing_returns_not_found(tmp_path):
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins)
+    host = PluginHost(plugins, tmp_path / "data")
+    host.discover()
+
+    result = host.read_docs("example")
+
+    assert result["ok"] is False
+    assert result["found"] is False
+
+
+def test_read_docs_rejects_path_traversal(tmp_path):
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, manifest_extra={"docs": "../../secret.md"})
+    (tmp_path / "secret.md").write_text("secret", encoding="utf-8")
+    host = PluginHost(plugins, tmp_path / "data")
+    host.discover()
+
+    result = host.read_docs("example")
+
+    assert result["ok"] is False
+    assert result["found"] is False
+
+
 def test_invalid_manifest_isolated_from_other_plugins(tmp_path):
     plugins = tmp_path / "plugins"
     write_plugin(plugins, "good")

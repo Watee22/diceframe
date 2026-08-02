@@ -590,6 +590,8 @@ export const zhCN = {
   permissions: '权限',
   arrayInputPlaceholder: '每行一个，或用逗号分隔（自动去重）',
   guideDocs: '说明文档',
+  pluginNoDocs: '该插件未提供说明文档',
+  pluginLoading: '加载中…',
   saveConfig: '保存配置',
   restartPlugin: '重启插件',
   updateFromStore: '从商店更新',

@@ -18,6 +18,13 @@ async def api_plugin_detail(request: web.Request) -> web.Response:
     try: return web.json_response(_get_api(request).plugin_detail(request.match_info["plugin_id"]))
     except KeyError as exc: return web.json_response({"ok":False,"error":str(exc)},status=404)
 
+async def api_plugin_docs(request: web.Request) -> web.Response:
+    try:
+        result = _get_api(request).read_plugin_docs(request.match_info["plugin_id"])
+    except KeyError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=404)
+    return web.json_response(result, status=200 if result.get("ok") else 404)
+
 async def api_plugin_config(request: web.Request) -> web.Response:
     denied=_require_confirmed_request(request)
     if denied is not None: return denied
@@ -260,6 +267,7 @@ def register_plugins(app: web.Application) -> None:
     app.router.add_put("/api/plugins/mirrors/{mirror_id}",api_plugin_mirror_update)
     app.router.add_delete("/api/plugins/mirrors/{mirror_id}",api_plugin_mirror_delete)
     app.router.add_get("/api/plugins/{plugin_id}",api_plugin_detail)
+    app.router.add_get("/api/plugins/{plugin_id}/docs",api_plugin_docs)
     app.router.add_put("/api/plugins/{plugin_id}/config",api_plugin_config)
     app.router.add_delete("/api/plugins/{plugin_id}",api_plugin_uninstall)
     app.router.add_post("/api/plugins/{plugin_id}/update",api_plugin_marketplace_update)

@@ -13,6 +13,7 @@ import { useLocale } from '@/composables/useLocale'
 import type { MessageKey } from '@/i18n'
 import type { PluginInfo } from '@/api/types'
 import NapcatGuide from '@/components/plugins/NapcatGuide.vue'
+import { pluginApi } from '@/api/plugins'
 import { usePluginContent } from './usePluginContent'
 import { useInstalledPlugins } from './useInstalledPlugins'
 import { usePluginMarketplace } from './usePluginMarketplace'
@@ -26,7 +27,7 @@ const {
   toolKey, loadTools, setToolInput, invokeTool,
 } = usePluginTools(busy)
 const {
-  contentGroups, contentByPlugin, contentGroupCount, contentLoading, contentTargetWorldId, worldOptions,
+  contentByPlugin, contentGroupCount, contentLoading, contentTargetWorldId, worldOptions,
   loadContentResources, loadWorlds, contentTitle, contentSubtitle, importContent,
 } = usePluginContent(busy)
 
@@ -79,6 +80,46 @@ function selectedThemeDescription(): string {
 function selectPluginTheme(value: string | null) {
   applyPluginTheme(value)
 }
+const pluginDocs = ref<Record<string, { content: string; name: string }>>({})
+const pluginDocsLoading = ref<Record<string, boolean>>({})
+
+async function loadPluginDocs(pluginId: string) {
+  if (pluginDocs.value[pluginId] !== undefined || pluginDocsLoading.value[pluginId]) return
+  pluginDocsLoading.value[pluginId] = true
+  try {
+    const response = await pluginApi.docs(pluginId)
+    if (response.ok && response.content) {
+      pluginDocs.value[pluginId] = { content: response.content, name: response.name || '' }
+    }
+  } catch {
+    // 忽略读取失败，不展示说明 tab 内容
+  } finally {
+    pluginDocsLoading.value[pluginId] = false
+  }
+}
+
+function renderDocsMarkdown(markdown: string): string {
+  // 轻量 markdown 转 HTML：标题、列表、加粗、代码、段落
+  const escaped = markdown
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const withCode = escaped.replace(/`([^`]+)`/g, '<code>$1</code>')
+  const withBold = withCode.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  const lines = withBold.split('\n')
+  let html = ''
+  let inList = false
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('### ')) { if (inList) { html += '</ul>'; inList = false } html += `<h4>${trimmed.slice(4)}</h4>` }
+    else if (trimmed.startsWith('## ')) { if (inList) { html += '</ul>'; inList = false } html += `<h3>${trimmed.slice(3)}</h3>` }
+    else if (trimmed.startsWith('# ')) { if (inList) { html += '</ul>'; inList = false } html += `<h2>${trimmed.slice(2)}</h2>` }
+    else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) { if (!inList) { html += '<ul>'; inList = true } html += `<li>${trimmed.slice(2)}</li>` }
+    else if (trimmed === '') { if (inList) { html += '</ul>'; inList = false } }
+    else { if (inList) { html += '</ul>'; inList = false } html += `<p>${trimmed}</p>` }
+  }
+  if (inList) html += '</ul>'
+  return html
+}
+
 onMounted(async () => {
   await load()
   await Promise.all([loadMarketplace(), loadMirrors(), loadContentResources(), loadWorlds()])
@@ -133,7 +174,7 @@ onMounted(async () => {
               </div>
             </template>
 
-            <NTabs type="line" animated class="plugin-tabs">
+            <NTabs type="line" animated class="plugin-tabs" @update:value="(name: string) => name === 'docs' && loadPluginDocs(p.id)">
               <NTabPane name="config" :tab="t('config')">
                 <section v-if="p.permissions?.length" class="permission-panel">
                   <h4>{{ t('permissions') }}</h4>
@@ -195,6 +236,13 @@ onMounted(async () => {
               </NTabPane>
               <NTabPane v-if="p.id === 'qq-napcat'" name="guide" :tab="t('guideDocs')">
                 <NapcatGuide />
+              </NTabPane>
+              <NTabPane v-else-if="p.docs" name="docs" :tab="t('guideDocs')">
+                <div class="plugin-docs">
+                  <p v-if="pluginDocsLoading[p.id]" class="muted">{{ t('pluginLoading') }}</p>
+                  <div v-else-if="pluginDocs[p.id]" class="plugin-docs-content" v-html="renderDocsMarkdown(pluginDocs[p.id].content)" />
+                  <p v-else class="muted">{{ t('pluginNoDocs') }}</p>
+                </div>
               </NTabPane>
             </NTabs>
 
@@ -701,6 +749,54 @@ onMounted(async () => {
   border: 1px solid var(--line-soft);
   border-radius: 6px;
   background: var(--panel-soft);
+}
+
+.plugin-docs {
+  padding: 4px 0;
+}
+
+.plugin-docs-content {
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.plugin-docs-content h2 {
+  font-size: 18px;
+  margin: 0 0 10px;
+  color: var(--gold-2);
+}
+
+.plugin-docs-content h3 {
+  font-size: 15px;
+  margin: 16px 0 8px;
+  color: var(--gold-2);
+}
+
+.plugin-docs-content h4 {
+  font-size: 14px;
+  margin: 12px 0 6px;
+  color: var(--gold-2);
+}
+
+.plugin-docs-content p {
+  margin: 6px 0;
+}
+
+.plugin-docs-content ul {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.plugin-docs-content li {
+  margin: 4px 0;
+}
+
+.plugin-docs-content code {
+  background: rgba(255, 255, 255, .08);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 13px;
 }
 
 .permission-panel h4 {

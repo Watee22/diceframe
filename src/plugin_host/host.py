@@ -344,6 +344,29 @@ class PluginHost:
     def public_asset_path(self, plugin_id: str, relative_path: str) -> Path:
         return self.content.public_asset_path(plugin_id, relative_path)
 
+    def read_docs(self, plugin_id: str) -> dict[str, Any]:
+        """读取插件 README/说明文档内容（manifest docs 指向的 .md 文件）。
+
+        只允许读取插件目录内的文件，拒绝路径越界。
+        """
+        runtime = self._require(plugin_id)
+        docs_rel = str(runtime.manifest.get("docs") or "").strip()
+        if not docs_rel:
+            return {"ok": False, "error": "该插件未提供说明文档", "found": False}
+        plugin_dir = runtime.directory.resolve()
+        try:
+            docs_path = (plugin_dir / docs_rel).resolve()
+            self._ensure_inside(plugin_dir, docs_path)
+        except ValueError:
+            return {"ok": False, "error": "说明文档路径越界", "found": False}
+        if not docs_path.is_file() or docs_path.is_symlink():
+            return {"ok": False, "error": "插件说明文档不存在", "found": False}
+        try:
+            content = docs_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            return {"ok": False, "error": f"读取说明文档失败：{exc}", "found": False}
+        return {"ok": True, "found": True, "name": docs_rel, "content": content}
+
     async def install_from_zip(self, payload: bytes, *, overwrite: bool = False, allow_any_root: bool = False) -> dict[str, Any]:
         if not payload:
             raise ValueError("插件包为空")
