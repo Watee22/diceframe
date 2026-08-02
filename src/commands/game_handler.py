@@ -137,7 +137,9 @@ class GameHandler:
             language=language,
         )
         if plugin_template:
-            await self._factory.init_world_from_template(world_id, plugin_template)
+            # 插件世界模板的世界书已由 sync_plugin_lorebooks 带插件标记灌入，
+            # 这里跳过避免重复灌入无标记副本。
+            logger.info("插件世界模板，跳过重复世界书初始化: %s", world_id)
         return instance
 
     def _load_world_template(self, world_id: str) -> dict | None:

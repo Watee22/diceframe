@@ -182,6 +182,14 @@ class WebAPI:
     def list_plugin_content(self, kind: str = "", world_id: str = "", rule_id: str = "") -> dict[str, Any]:
         return plugins.list_plugin_content(self, kind, world_id, rule_id)
 
+    def sync_plugin_lorebooks(self) -> dict[str, Any]:
+        """同步已启用插件的世界模板世界书到世界书库（幂等）。"""
+        return plugins.sync_plugin_lorebooks(self)
+
+    def cleanup_plugin_lorebook(self, plugin_id: str) -> dict[str, Any]:
+        """删除某插件灌入的、未被用户改动的世界书条目。"""
+        return plugins.cleanup_plugin_lorebook(self, plugin_id)
+
     def import_plugin_content(
         self,
         kind: str,
@@ -466,6 +474,12 @@ class WebAPI:
     # ---- 世界模板 ----
 
     def list_world_templates(self) -> dict[str, Any]:
+        # 确保已启用插件的世界模板世界书已同步（幂等）
+        if self._plugins:
+            try:
+                plugins.sync_plugin_lorebooks(self)
+            except Exception:
+                pass
         return worlds.list_world_templates(self)
 
     def cleanup_orphan_game_templates(self, world_id: str = "") -> int:

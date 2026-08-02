@@ -579,6 +579,7 @@ export const en = {
   importedLorebook: 'Imported to lorebook',
   importAllContent: 'Import all',
   importedAllCount: 'Imported {imported} items ({errors} failed)',
+  contentItems: 'items',
   pluginsInstalledTab: 'Installed',
   installPluginTitle: 'Install Plugin',
   installPluginHelp: 'Use .dfplugin for private or offline sharing. Install open-source plugins from the store.',

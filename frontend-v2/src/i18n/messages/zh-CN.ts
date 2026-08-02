@@ -579,6 +579,7 @@ export const zhCN = {
   importedLorebook: '已导入世界书',
   importAllContent: '一键导入全部',
   importedAllCount: '已导入 {imported} 项（失败 {errors}）',
+  contentItems: '项',
   pluginsInstalledTab: '已安装',
   installPluginTitle: '安装插件',
   installPluginHelp: '私下或网盘分享的插件使用 .dfplugin 文件；开源插件请从插件商店安装。',

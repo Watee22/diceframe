@@ -422,11 +422,11 @@ onMounted(async () => {
               </div>
             </template>
             <template #header-extra>
-              <NTag size="small">{{ plugin.groups.reduce((sum, g) => sum + g.items.length, 0) }}</NTag>
+              <span class="content-count muted">{{ plugin.groups.reduce((sum, g) => sum + g.items.length, 0) }} {{ t('contentItems') }}</span>
               <NButton
                 size="small"
                 secondary
-                type="primary"
+                class="import-all-btn"
                 :loading="busy === `import-all:${plugin.plugin_id}`"
                 @click.stop="importAllContent(plugin.plugin_id)"
               >
@@ -580,6 +580,30 @@ onMounted(async () => {
 
 .content-collapse {
   margin-top: 4px;
+}
+
+.content-collapse :deep(.n-collapse-item__header) {
+  padding: 10px 12px;
+}
+
+.content-collapse :deep(.n-collapse-item__header-main) {
+  min-width: 0;
+}
+
+.content-collapse :deep(.n-collapse-item__header-extra) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.content-count {
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.import-all-btn {
+  flex-shrink: 0;
 }
 
 .content-plugin-head {

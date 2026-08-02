@@ -28,15 +28,83 @@ def read_plugin_docs(api: "WebAPI", plugin_id: str) -> dict[str, Any]:
     if not api._plugins: return {"ok": False, "error": "插件宿主未启用"}
     return api._plugins.read_docs(plugin_id)
 
+
+def sync_plugin_lorebooks(api: "WebAPI") -> dict[str, Any]:
+    """同步已启用插件的世界模板世界书到世界书库（幂等）。
+
+    插件启用后，其世界模板的 starter_lorebook 自动出现在世界书库，
+    无需用户先开一把游戏。条目 id 加 `_plugin_{plugin_id}_` 标记，
+    便于卸载时精确清理。
+    """
+    if not api._plugins:
+        return {"ok": False, "error": "插件宿主未启用"}
+    total = 0
+    for item in api._plugins.contributions.list("world_template"):
+        plugin_id = str(item.plugin_id or "")
+        runtime = api._plugins.plugins.get(plugin_id)
+        if not runtime or not runtime.config.get("enabled"):
+            continue
+        try:
+            data = json.loads(item.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        if not isinstance(data, dict) or not data.get("world_id"):
+            continue
+        world_id = str(data["world_id"])
+        if not api._lore.get_world(world_id):
+            api._lore.create_world(
+                world_id,
+                data.get("world_name", world_id),
+                description=data.get("description", ""),
+                language=data.get("language", "zh-CN"),
+            )
+        for raw in data.get("starter_lorebook", []):
+            if not isinstance(raw, dict) or not raw.get("id"):
+                continue
+            entry_id = f"{_safe_id_part(world_id)}_plugin_{_safe_id_part(plugin_id)}_{_safe_id_part(str(raw['id']))}"
+            if api._lore.get_entry(entry_id):
+                continue
+            entry = dict(raw)
+            entry["id"] = entry_id
+            entry["world_id"] = world_id
+            api._lore.add_entry(entry)
+            total += 1
+    return {"ok": True, "synced": total}
+
+
+def cleanup_plugin_lorebook(api: "WebAPI", plugin_id: str) -> dict[str, Any]:
+    """删除某插件灌入的世界书条目（id 含 `_plugin_{plugin_id}_` 标记）。
+
+    只删 id 带插件标记的条目，保留用户自己创建的条目。
+    """
+    if not api._plugins or not api._lore:
+        return {"ok": False, "error": "插件宿主或世界书库未启用"}
+    marker = f"_plugin_{_safe_id_part(plugin_id)}_"
+    removed = 0
+    for world in api._lore.list_worlds():
+        wid = str(world.get("world_id") or world.get("id") or "")
+        if not wid:
+            continue
+        for entry in api._lore.list_entries(wid):
+            if marker in str(entry.get("id") or ""):
+                api._lore.delete_entry(str(entry["id"]))
+                removed += 1
+    return {"ok": True, "removed": removed}
+
 async def update_plugin_config(api: "WebAPI", plugin_id: str, changes: dict[str, Any]) -> dict[str, Any]:
     if not api._plugins: return {"ok": False, "error": "插件宿主未启用"}
-    return {"ok": True, **await api._plugins.update_config(plugin_id, changes)}
+    result = await api._plugins.update_config(plugin_id, changes)
+    if result.get("ok") and changes.get("enabled") is True:
+        sync_plugin_lorebooks(api)
+    return {"ok": True, **result}
 
 async def control_plugin(api: "WebAPI", plugin_id: str, action: str) -> dict[str, Any]:
     if not api._plugins: return {"ok": False, "error": "插件宿主未启用"}
     method = {"start": api._plugins.start, "stop": api._plugins.stop, "restart": api._plugins.restart}.get(action)
     if not method: return {"ok": False, "error": "插件操作无效"}
     await method(plugin_id)
+    if action in ("start", "restart"):
+        sync_plugin_lorebooks(api)
     return {"ok": True, **api._plugins.public_detail(plugin_id)}
 
 async def install_plugin(api: "WebAPI", payload: bytes, overwrite: bool = False) -> dict[str, Any]:
@@ -62,7 +130,10 @@ async def update_marketplace_plugin(api: "WebAPI", plugin_id: str) -> dict[str, 
 async def uninstall_plugin(api: "WebAPI", plugin_id: str, delete_data: bool = False) -> dict[str, Any]:
     if not api._plugins:
         return {"ok": False, "error": "插件宿主未启用"}
-    return {"ok": True, **await api._plugins.uninstall(plugin_id, delete_data=delete_data)}
+    # 卸载前清理该插件灌入的世界书条目，避免残留
+    cleanup = cleanup_plugin_lorebook(api, plugin_id)
+    result = await api._plugins.uninstall(plugin_id, delete_data=delete_data)
+    return {"ok": True, **result, "lorebook_removed": cleanup.get("removed", 0)}
 
 def list_plugin_mirrors(api: "WebAPI") -> dict[str, Any]:
     if not api._plugins:

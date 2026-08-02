@@ -154,6 +154,54 @@ def test_import_all_plugin_content_imports_characters_and_entries(tmp_path):
     assert len(api._lore.entries) == 1
 
 
+def test_sync_plugin_lorebook_and_cleanup(tmp_path):
+    from src.webui.services.plugins import cleanup_plugin_lorebook, sync_plugin_lorebooks
+
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, "worlds", plugin_type="content-pack", entrypoint=False,
+                 manifest_extra={"contributes": {"world_templates": ["worlds/*.json"]}})
+    worlds_dir = plugins / "worlds" / "worlds"
+    worlds_dir.mkdir(parents=True)
+    (worlds_dir / "w.json").write_text(json.dumps({
+        "world_id": "w", "world_name": "W", "default_rule": "none",
+        "starter_lorebook": [
+            {"id": "e1", "name": "Place", "type": "location", "keywords": ["P"], "content": "a place", "tier": "core"},
+        ],
+    }), encoding="utf-8")
+    data_dir = tmp_path / "data"
+    cfg = data_dir / "worlds"
+    cfg.mkdir(parents=True)
+    (cfg / "config.json").write_text(json.dumps({"enabled": True}), encoding="utf-8")
+    host = PluginHost(plugins, data_dir)
+    host.discover()
+
+    class _Lore:
+        def __init__(self): self.entries = {}; self.worlds = {}
+        def get_world(self, wid): return self.worlds.get(wid)
+        def create_world(self, wid, name, description="", language=""): self.worlds[wid] = {"world_id": wid}
+        def update_world_language(self, wid, lang): pass
+        def get_entry(self, eid): return self.entries.get(eid)
+        def add_entry(self, e): self.entries[e["id"]] = e
+        def list_worlds(self): return [{"world_id": w} for w in self.worlds]
+        def list_entries(self, wid): return [e for e in self.entries.values() if e["world_id"] == wid]
+        def delete_entry(self, eid): self.entries.pop(eid, None)
+    class _Api:
+        def __init__(self): self._plugins = host; self._lore = _Lore()
+
+    api = _Api()
+    synced = sync_plugin_lorebooks(api)
+    assert synced["ok"] is True
+    assert synced["synced"] == 1
+    assert len(api._lore.entries) == 1
+    entry_id = next(iter(api._lore.entries))
+    assert "_plugin_worlds_" in entry_id
+
+    removed = cleanup_plugin_lorebook(api, "worlds")
+    assert removed["ok"] is True
+    assert removed["removed"] == 1
+    assert len(api._lore.entries) == 0
+
+
 def test_invalid_manifest_isolated_from_other_plugins(tmp_path):
     plugins = tmp_path / "plugins"
     write_plugin(plugins, "good")
