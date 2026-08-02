@@ -117,6 +117,26 @@ export function usePluginContent(busy: Ref<string>) {
     }
   }
 
+  async function importAllContent(pluginId: string) {
+    if (!contentTargetWorldId.value) {
+      toast.error(t('selectLorebookTarget'))
+      return
+    }
+    busy.value = `import-all:${pluginId}`
+    try {
+      const response = await pluginApi.importAllContent(pluginId, contentTargetWorldId.value)
+      if (!response.ok) throw new Error(response.error || t('importFailed'))
+      const imported = response.imported_count || 0
+      const errors = response.error_count || 0
+      toast.success(t('importedAllCount', { imported, errors }))
+      await loadContentResources()
+    } catch (error: unknown) {
+      toast.error(errorMessage(error))
+    } finally {
+      busy.value = ''
+    }
+  }
+
   return {
     contentGroups,
     contentByPlugin,
@@ -129,5 +149,6 @@ export function usePluginContent(busy: Ref<string>) {
     contentTitle,
     contentSubtitle,
     importContent,
+    importAllContent,
   }
 }

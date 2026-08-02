@@ -194,6 +194,61 @@ def import_plugin_content(
     return result
 
 
+def import_all_plugin_content(
+    api: "WebAPI",
+    plugin_id: str,
+    target_world_id: str = "",
+) -> dict[str, Any]:
+    """一键导入插件全部内容：角色卡→卡库，NPC/道具/魔法/职业→指定世界书。"""
+    if not api._plugins:
+        return {"ok": False, "error": "插件宿主未启用"}
+    plugin_id = (plugin_id or "").strip()
+    target_world_id = (target_world_id or "").strip()
+    resources = api._plugins.list_content_resources()
+    kinds = ("character_template", "npc", "item", "spell", "class")
+    imported: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for kind in kinds:
+        for resource in resources.get(kind, []):
+            if str(resource.get("plugin_id") or "") != plugin_id:
+                continue
+            try:
+                if kind == "character_template":
+                    card = _content_to_character_card(resource)
+                    result = api.save_character_card(card)
+                    if result.get("ok"):
+                        imported.append({"kind": kind, "name": _content_name(resource), "as": "character_card"})
+                    else:
+                        errors.append({"kind": kind, "name": _content_name(resource), "error": result.get("error", "")})
+                else:
+                    if not target_world_id:
+                        skipped.append({"kind": kind, "name": _content_name(resource), "reason": "未选择世界书"})
+                        continue
+                    if not api._lore.get_world(target_world_id):
+                        return {"ok": False, "error": "目标世界书不存在"}
+                    entry = _content_to_lore_entry(resource, kind, target_world_id)
+                    if api._lore.get_entry(entry["id"]):
+                        entry["id"] = f"{entry['id']}_{int(time.time() * 1000)}"
+                    result = api.save_entry(entry)
+                    if result.get("ok"):
+                        imported.append({"kind": kind, "name": _content_name(resource), "as": "lorebook_entry"})
+                    else:
+                        errors.append({"kind": kind, "name": _content_name(resource), "error": result.get("error", "")})
+            except Exception as exc:
+                errors.append({"kind": kind, "name": _content_name(resource), "error": str(exc)})
+    return {
+        "ok": True,
+        "plugin_id": plugin_id,
+        "imported": imported,
+        "imported_count": len(imported),
+        "skipped": skipped,
+        "skipped_count": len(skipped),
+        "errors": errors,
+        "error_count": len(errors),
+    }
+
+
 def plugin_asset_path(api: "WebAPI", plugin_id: str, relative_path: str) -> Path:
     if not api._plugins:
         raise KeyError("插件宿主未启用")

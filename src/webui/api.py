@@ -192,6 +192,9 @@ class WebAPI:
     ) -> dict[str, Any]:
         return plugins.import_plugin_content(self, kind, resource_id, plugin_id, target_world_id, overwrite)
 
+    def import_all_plugin_content(self, plugin_id: str, target_world_id: str = "") -> dict[str, Any]:
+        return plugins.import_all_plugin_content(self, plugin_id, target_world_id)
+
     def plugin_asset_path(self, plugin_id: str, relative_path: str) -> Path:
         return plugins.plugin_asset_path(self, plugin_id, relative_path)
 

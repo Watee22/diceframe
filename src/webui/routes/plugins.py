@@ -144,6 +144,19 @@ async def api_plugin_content_import(request: web.Request) -> web.Response:
         return web.json_response({"ok":False,"error":str(exc)},status=400)
     return web.json_response(result,status=200 if result.get("ok") else 400)
 
+async def api_plugin_content_import_all(request: web.Request) -> web.Response:
+    denied=_require_confirmed_request(request)
+    if denied is not None: return denied
+    try:
+        body = await request.json()
+        result = _get_api(request).import_all_plugin_content(
+            body.get("plugin_id", ""),
+            body.get("target_world_id", body.get("world_id", "")),
+        )
+    except ValueError as exc:
+        return web.json_response({"ok":False,"error":str(exc)},status=400)
+    return web.json_response(result,status=200 if result.get("ok") else 400)
+
 async def api_plugin_asset(request: web.Request) -> web.StreamResponse:
     try:
         path = _get_api(request).plugin_asset_path(request.match_info["plugin_id"], request.match_info["path"])
@@ -259,6 +272,7 @@ def register_plugins(app: web.Application) -> None:
     app.router.add_post("/api/plugins/tools/{plugin_id}/{tool_name}",api_plugin_tool_invoke)
     app.router.add_get("/api/plugins/content",api_plugin_content)
     app.router.add_post("/api/plugins/content/import",api_plugin_content_import)
+    app.router.add_post("/api/plugins/content/import-all",api_plugin_content_import_all)
     app.router.add_get("/api/plugins/assets/{plugin_id}/{path:.*}",api_plugin_asset)
     app.router.add_post("/api/plugins/marketplace/install",api_plugin_marketplace_install)
     app.router.add_get("/api/plugins/mirrors",api_plugin_mirrors)

@@ -110,6 +110,50 @@ def test_read_docs_rejects_path_traversal(tmp_path):
     assert result["found"] is False
 
 
+def test_import_all_plugin_content_imports_characters_and_entries(tmp_path):
+    from src.webui.services.plugins import import_all_plugin_content
+
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, "packs", plugin_type="content-pack", entrypoint=False,
+                 manifest_extra={"docs": "README.md", "contributes": {
+                     "characters": ["characters/*.json"],
+                     "npcs": ["npc/*.json"],
+                 }})
+    (plugins / "packs" / "characters").mkdir()
+    (plugins / "packs" / "npc").mkdir()
+    (plugins / "packs" / "characters" / "hero.json").write_text(json.dumps({
+        "id": "hero", "character_name": "Hero", "attributes": {}, "skills": []}), encoding="utf-8")
+    (plugins / "packs" / "npc" / "mentor.json").write_text(json.dumps({
+        "id": "mentor", "name": "Mentor", "description": "old mentor"}), encoding="utf-8")
+    data_dir = tmp_path / "data"
+    cfg = data_dir / "packs"
+    cfg.mkdir(parents=True)
+    (cfg / "config.json").write_text(json.dumps({"enabled": True}), encoding="utf-8")
+    host = PluginHost(plugins, data_dir)
+    host.discover()
+
+    class _Lore:
+        worlds = {"w1": {"id": "w1", "name": "W"}}
+        entries = {}
+        def get_world(self, wid): return self.worlds.get(wid)
+        def get_entry(self, eid): return self.entries.get(eid)
+    class _Api:
+        def __init__(self):
+            self._plugins = host
+            self._lore = _Lore()
+            self.cards = []
+        def save_character_card(self, card): self.cards.append(card); return {"ok": True}
+        def save_entry(self, e): self._lore.entries[e["id"]] = e; return {"ok": True}
+
+    api = _Api()
+    result = import_all_plugin_content(api, "packs", "w1")
+
+    assert result["ok"] is True
+    assert result["imported_count"] == 2
+    assert len(api.cards) == 1
+    assert len(api._lore.entries) == 1
+
+
 def test_invalid_manifest_isolated_from_other_plugins(tmp_path):
     plugins = tmp_path / "plugins"
     write_plugin(plugins, "good")

@@ -577,6 +577,8 @@ export const en = {
   importFailed: 'Import failed',
   importedCharacterLibrary: 'Imported to character library',
   importedLorebook: 'Imported to lorebook',
+  importAllContent: 'Import all',
+  importedAllCount: 'Imported {imported} items ({errors} failed)',
   pluginsInstalledTab: 'Installed',
   installPluginTitle: 'Install Plugin',
   installPluginHelp: 'Use .dfplugin for private or offline sharing. Install open-source plugins from the store.',

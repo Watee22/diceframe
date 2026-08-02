@@ -28,7 +28,7 @@ const {
 } = usePluginTools(busy)
 const {
   contentByPlugin, contentGroupCount, contentLoading, contentTargetWorldId, worldOptions,
-  loadContentResources, loadWorlds, contentTitle, contentSubtitle, importContent,
+  loadContentResources, loadWorlds, contentTitle, contentSubtitle, importContent, importAllContent,
 } = usePluginContent(busy)
 
 async function refreshPluginSurfaces() {
@@ -423,6 +423,15 @@ onMounted(async () => {
             </template>
             <template #header-extra>
               <NTag size="small">{{ plugin.groups.reduce((sum, g) => sum + g.items.length, 0) }}</NTag>
+              <NButton
+                size="small"
+                secondary
+                type="primary"
+                :loading="busy === `import-all:${plugin.plugin_id}`"
+                @click.stop="importAllContent(plugin.plugin_id)"
+              >
+                {{ t('importAllContent') }}
+              </NButton>
             </template>
             <div class="content-plugin-body">
               <section v-for="group in plugin.groups" :key="group.key" class="content-group">

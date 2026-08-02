@@ -96,7 +96,7 @@ The output is placed in `dist/plugins/`. The packager applies host validation an
 - `contributes` declares resource paths or globs that register while enabled.
 - `capabilities` describes factual business capabilities.
 - `permissions` requests known host capabilities and is shown in settings.
-- `docs` points to documentation inside the package.
+- `docs` points to documentation inside the package (e.g. `README_CN.md`). It is rendered in the plugin settings "Guide" tab using lightweight Markdown (headings, lists, bold, inline code). Write it in the language of your users and explain what the plugin does, how to enable it, and how to use it. The tab is hidden when this field is absent.
 
 Known types are `channel-adapter`, `bot-extension`, `content-pack`, `theme`, `map-pack`, `import-export`, `provider`, and `tool`.
 
