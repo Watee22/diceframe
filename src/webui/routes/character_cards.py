@@ -40,6 +40,8 @@ async def api_character_card_import(request: web.Request) -> web.Response:
     return web.json_response(await _get_api(request).import_character_card(
         file_data=body.get("file_data", ""),
         file_name=body.get("file_name", "card.json"),
+        target=str(body.get("target") or "character_card"),
+        world_id=str(body.get("world_id") or ""),
     ))
 
 

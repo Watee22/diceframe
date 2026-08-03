@@ -387,8 +387,9 @@ class WebAPI:
     def delete_character_card(self, card_id: str) -> dict[str, Any]:
         return character_cards.delete_character_card(self, card_id)
 
-    async def import_character_card(self, file_data: str = "", file_name: str = "card.json") -> dict[str, Any]:
-        return await character_cards.import_character_card(self, file_data, file_name)
+    async def import_character_card(self, file_data: str = "", file_name: str = "card.json",
+                                    target: str = "character_card", world_id: str = "") -> dict[str, Any]:
+        return await character_cards.import_character_card(self, file_data, file_name, target, world_id)
 
     # ---- 世界编辑器 ----
 

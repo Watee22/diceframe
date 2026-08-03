@@ -1,6 +1,6 @@
 import { api } from '@/api/client'
 import { i18n } from '@/i18n'
-import type { CharacterCard, CharacterImportResponse } from '@/api/types'
+import type { CharacterImportResponse } from '@/api/types'
 
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -15,12 +15,20 @@ export function fileToBase64(file: File): Promise<string> {
   })
 }
 
-export async function importTavernCard(file: File): Promise<CharacterCard> {
+export async function importTavernCard(
+  file: File,
+  opts?: { target?: 'character_card' | 'npc'; worldId?: string },
+): Promise<CharacterImportResponse> {
   const fileData = await fileToBase64(file)
   const r = await api<CharacterImportResponse>('/character-cards/import', {
     method: 'POST',
-    body: JSON.stringify({ file_name: file.name, file_data: fileData }),
+    body: JSON.stringify({
+      file_name: file.name,
+      file_data: fileData,
+      target: opts?.target,
+      world_id: opts?.worldId,
+    }),
   })
-  if (!r.ok || !r.card) throw new Error(r.error || i18n.global.t('importFailed'))
-  return r.card
+  if (!r.ok) throw new Error(r.error || i18n.global.t('importFailed'))
+  return r
 }

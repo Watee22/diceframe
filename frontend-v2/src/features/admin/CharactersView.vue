@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '@/api/client'
-import type { CharacterCard, CharacterCardsResponse, CharacterItem, CharacterListResponse, CharacterPortrait, CharacterSchemaResponse, CharacterSheet, CharacterSkill, JsonObject, RuleMeta, RulesResponse, RuleSummary, SkillSpec } from '@/api/types'
+import type { CharacterCard, CharacterCardsResponse, CharacterItem, CharacterListResponse, CharacterPortrait, CharacterSchemaResponse, CharacterSheet, CharacterSkill, JsonObject, RuleMeta, RulesResponse, RuleSummary, SkillSpec, WorldListResponse, WorldSummary } from '@/api/types'
 import { readCurrentGame } from '@/stores/gameContext'
 import { importTavernCard } from '@/utils/characterImport'
 import { useToast } from '@/composables/useToast'
@@ -208,6 +208,34 @@ async function load() {
 }
 const route = useRoute()
 const tavernInput = ref<HTMLInputElement | null>(null)
+const tavernImportOpen = ref(false)
+const tavernTarget = ref<'npc' | 'character_card'>('npc')
+const tavernWorlds = ref<WorldSummary[]>([])
+const tavernWorldId = ref('')
+
+async function openTavernImport() {
+  tavernTarget.value = 'npc'
+  tavernWorldId.value = ''
+  tavernImportOpen.value = true
+  try {
+    const r = await api<WorldListResponse>('/worlds')
+    tavernWorlds.value = r.worlds || []
+    if (tavernWorlds.value.length && !tavernWorldId.value) {
+      const first = tavernWorlds.value[0]
+      tavernWorldId.value = String(first.id || first.world_id || '')
+    }
+  } catch (err: unknown) { toast.error(errorMessage(err)) }
+}
+
+function confirmTavernChoice() {
+  if (tavernTarget.value === 'npc' && !tavernWorldId.value) {
+    toast.error(t('tavernImportPickWorld'))
+    return
+  }
+  tavernImportOpen.value = false
+  tavernInput.value?.click()
+}
+
 onMounted(async () => {
   await load()
   const uid = route.query.edit_user ? String(route.query.edit_user) : ''
@@ -221,10 +249,16 @@ async function onImportTavern(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+  const target = tavernTarget.value
+  const worldId = target === 'npc' ? tavernWorldId.value : ''
   busy.value = true
   try {
-    const card = await importTavernCard(file)
-    toast.success(t('importedCharacter', { name: card.character_name || file.name }))
+    const r = await importTavernCard(file, { target, worldId })
+    if (target === 'npc') {
+      toast.success(t('importedTavernNpc', { name: r.npc_name || file.name, world: worldId, count: r.lorebook_entries || 0 }))
+    } else {
+      toast.success(t('importedCharacter', { name: r.card?.character_name || file.name }))
+    }
     await load()
   } catch (err: unknown) { toast.error(errorMessage(err)) } finally { busy.value = false; input.value = '' }
 }
@@ -475,8 +509,27 @@ async function onWizardSubmit(c: CharacterSheet & { character_name: string }) {
       </article>
     </div>
 
-    <h2 class="field-group" style="display:flex;align-items:center;justify-content:space-between"><span>{{ t('sharedCharacterLibrary') }}</span><button class="primary" :disabled="busy" @click="tavernInput?.click()">{{ t('importTavernCard') }}</button></h2>
+    <h2 class="field-group" style="display:flex;align-items:center;justify-content:space-between"><span>{{ t('sharedCharacterLibrary') }}</span><button class="primary" :disabled="busy" @click="openTavernImport">{{ t('importTavernCard') }}</button></h2>
     <input ref="tavernInput" type="file" accept=".json,application/json" @change="onImportTavern" hidden>
+    <Modal v-if="tavernImportOpen" :title="t('importTavernCard')" @close="tavernImportOpen = false">
+      <label>{{ t('tavernImportAs') }}</label>
+      <div class="check-row">
+        <label><input type="radio" value="npc" v-model="tavernTarget"> {{ t('tavernImportAsNpc') }}</label>
+        <label><input type="radio" value="character_card" v-model="tavernTarget"> {{ t('tavernImportAsCard') }}</label>
+      </div>
+      <p class="muted">{{ t('tavernImportAsNpcHint') }}</p>
+      <div v-if="tavernTarget === 'npc'">
+        <label>{{ t('tavernImportTargetWorld') }}</label>
+        <select v-model="tavernWorldId">
+          <option v-for="w in tavernWorlds" :key="w.id || w.world_id" :value="w.id || w.world_id">{{ w.name || w.world_name }}</option>
+        </select>
+        <p v-if="!tavernWorlds.length" class="muted">{{ t('tavernImportNoWorlds') }}</p>
+      </div>
+      <template #actions>
+        <button @click="tavernImportOpen = false">{{ t('cancel') }}</button>
+        <button class="primary" :disabled="tavernTarget === 'npc' && !tavernWorldId" @click="confirmTavernChoice">{{ t('chooseFile') }}</button>
+      </template>
+    </Modal>
     <div class="card-grid">
       <article v-for="c in data?.cards || []" :key="c.card_id || c.id" class="char-card">
         <div class="character-card-summary">

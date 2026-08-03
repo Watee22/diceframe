@@ -192,7 +192,71 @@ def _tavern_to_character_card(tavern: dict, file_name: str = "") -> dict[str, An
     }
 
 
-async def import_character_card(api: "WebAPI", file_data: str = "", file_name: str = "card.json") -> dict[str, Any]:
+def _import_tavern_as_npc(api: "WebAPI", tavern: dict, world_id: str) -> dict[str, Any]:
+    """把酒馆卡导入为指定世界的 NPC 世界书条目，并拆入内嵌角色世界书。
+
+    酒馆卡本质是「AI 扮演的角色」，落成 NPC 比塞进 TRPG 角色卡（强填 race/class/
+    属性）更自然：description/personality/scenario/first_mes 拼成条目 content，
+    名字+tags 做 keywords 触发出场；内嵌 character_book 拆成同世界 other 条目。
+    """
+    if not world_id:
+        return {"ok": False, "error": "导入为 NPC 需要选择目标世界"}
+    if not api._lore:
+        return {"ok": False, "error": "世界书库未启用"}
+    if not api._lore.get_world(world_id):
+        return {"ok": False, "error": "目标世界不存在"}
+    name = str(tavern.get("name") or "未命名").strip()
+    safe_name = name.replace(" ", "_") or "npc"
+    entry_id = f"{world_id}_tavern_{safe_name}"
+    keywords = [name] + [str(t).strip() for t in (tavern.get("tags") or []) if str(t).strip()]
+    content_parts: list[str] = []
+    for label, key in (("描述", "description"), ("性格", "personality"),
+                       ("背景", "scenario"), ("初次见面", "first_mes")):
+        value = str(tavern.get(key) or "").strip()
+        if value:
+            content_parts.append(f"{label}: {value}")
+    npc_entry = {
+        "id": entry_id,
+        "world_id": world_id,
+        "name": name,
+        "type": "npc",
+        "keywords": keywords[:12],
+        "content": "\n".join(content_parts),
+        "tier": "core",
+    }
+    if api._lore.get_entry(entry_id):
+        api._lore.update_entry(entry_id, npc_entry)
+    else:
+        api._lore.add_entry(npc_entry)
+    # 内嵌角色世界书 -> 同世界的 other 条目
+    book = tavern.get("character_book") or []
+    book_imported = 0
+    if isinstance(book, list):
+        for idx, item in enumerate(book):
+            if not isinstance(item, dict):
+                continue
+            book_id = f"{world_id}_tavern_{safe_name}_book_{idx}"
+            book_entry = {
+                "id": book_id,
+                "world_id": world_id,
+                "name": str(item.get("comment") or item.get("name") or f"{name} 世界书{idx}"),
+                "type": "other",
+                "keywords": [str(k).strip() for k in (item.get("keys") or []) if str(k).strip()],
+                "content": str(item.get("content") or ""),
+                "tier": "background",
+            }
+            if api._lore.get_entry(book_id):
+                api._lore.update_entry(book_id, book_entry)
+            else:
+                api._lore.add_entry(book_entry)
+            book_imported += 1
+    api._rebuild_lorebook_index(world_id)
+    logger.info("酒馆卡已导入为 NPC: %s -> world=%s（含 %d 条世界书）", name, world_id, book_imported)
+    return {"ok": True, "imported_as": "npc", "npc_name": name, "world_id": world_id, "lorebook_entries": book_imported}
+
+
+async def import_character_card(api: "WebAPI", file_data: str = "", file_name: str = "card.json",
+                                target: str = "character_card", world_id: str = "") -> dict[str, Any]:
     if not file_data:
         return {"ok": False, "error": "未提供文件数据"}
     raw_bytes = base64.b64decode(file_data)
@@ -208,8 +272,10 @@ async def import_character_card(api: "WebAPI", file_data: str = "", file_name: s
             pass
     if "error" in tavern:
         return {"ok": False, "error": tavern["error"]}
+    if target == "npc":
+        return _import_tavern_as_npc(api, tavern, world_id)
     card = _tavern_to_character_card(tavern, safe_name)
     cards = _read_cards(api)
     cards.append(card)
     _write_cards(api, cards)
-    return {"ok": True, "card": card}
+    return {"ok": True, "card": card, "imported_as": "character_card"}

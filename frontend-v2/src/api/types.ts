@@ -308,6 +308,10 @@ export interface CharacterImportResponse {
   ok?: boolean
   error?: string
   card?: CharacterCard
+  imported_as?: 'character_card' | 'npc'
+  npc_name?: string
+  world_id?: string
+  lorebook_entries?: number
 }
 
 export interface RuleAttribute {

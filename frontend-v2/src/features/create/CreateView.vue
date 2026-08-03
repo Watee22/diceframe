@@ -159,7 +159,9 @@ async function onStImport(e: Event) {
   const file = input.files?.[0]
   if (!file) return
   try {
-    const card = await importTavernCard(file)
+    const r = await importTavernCard(file, { target: 'character_card' })
+    const card = r.card
+    if (!card) throw new Error(t('importFailed'))
     cards.value.push(card)
     characters.value.push(ensureCharacter({
       character_name: card.character_name,
