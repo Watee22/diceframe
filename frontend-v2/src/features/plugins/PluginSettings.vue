@@ -318,13 +318,13 @@ onMounted(async () => {
                 <h3>{{ item.name }}</h3>
                 <p class="muted">{{ item.id }} · {{ item.version || t('unknownVersion') }}</p>
               </div>
-            </div>
-            <p class="market-desc">{{ item.description || t('noDescription') }}</p>
-            <div class="tag-row">
               <NTag v-if="item.stars" size="small" class="stars-tag" :title="t('pluginStars', { count: item.stars })">
                 <template #icon><NIcon :component="Star" /></template>
                 {{ item.stars }}
               </NTag>
+            </div>
+            <p class="market-desc">{{ item.description || t('noDescription') }}</p>
+            <div class="tag-row">
               <NTag v-if="item.plugin_type" size="small">{{ pluginTypeLabel(item.plugin_type) }}</NTag>
               <NTag v-if="item.support?.level === 'partial'" type="warning" size="small">{{ t('pluginSupportPartial') }}</NTag>
               <NTag v-if="item.support?.level === 'reserved'" type="error" size="small">{{ t('pluginSupportReserved') }}</NTag>
@@ -1047,7 +1047,7 @@ onMounted(async () => {
 
 .market-title {
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: 28px 1fr auto;
   gap: 10px;
   align-items: start;
 }
