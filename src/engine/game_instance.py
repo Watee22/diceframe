@@ -166,6 +166,9 @@ class GameInstance:
     summary: dict = field(default_factory=dict)
     key_facts: list = field(default_factory=list)
 
+    # 运行时跟踪：chatlog.jsonl 已持久化的 log 条数（不入存档，仅用于增量追加）
+    last_saved_log_count: int = 0
+
     # 统计
     total_llm_calls: int = 0
     total_tokens: int = 0
@@ -1306,11 +1309,12 @@ class GameRegistry:
         return path
 
     async def save(self, instance: GameInstance) -> None:
-        """写入存档: tmp -> backup rename -> tmp rename。"""
+        """写入存档: 完整 log 追加进 chatlog.jsonl（增量），核心态写 state.json。"""
         sp = self._save_path(instance.game_key)
         sp.parent.mkdir(parents=True, exist_ok=True)
         backup = sp.with_name("state.backup.json")
 
+        self._append_chatlog(instance)
         data = instance.to_dict()
         tmp = sp.with_name("state.tmp.json")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2),
@@ -1318,6 +1322,31 @@ class GameRegistry:
         if sp.exists():
             sp.replace(backup)
         tmp.replace(sp)
+
+    @staticmethod
+    def _chatlog_path(sp: Path) -> Path:
+        return sp.with_name("chatlog.jsonl")
+
+    def _append_chatlog(self, instance: GameInstance) -> None:
+        """把自上次保存以来的新 log 增量追加进 chatlog.jsonl。
+
+        历史完整保存在 jsonl（逐行追加，O(1)），核心态 state.json 只留最近上下文，
+        避免上万回合时每次全量重写大文件。增量通过 last_saved_log_count 跟踪。
+        """
+        if instance.last_saved_log_count >= len(instance.log):
+            return
+        new_entries = instance.log[instance.last_saved_log_count:]
+        if not new_entries:
+            return
+        sp = self._save_path(instance.game_key)
+        sp.parent.mkdir(parents=True, exist_ok=True)
+        lines = "\n".join(
+            json.dumps(entry, ensure_ascii=False) for entry in new_entries
+        ) + "\n"
+        # 追加写入（O(1)，不重写历史）；用 os.open O_APPEND 保证原子性
+        with open(self._chatlog_path(sp), "a", encoding="utf-8") as fh:
+            fh.write(lines)
+        instance.last_saved_log_count = len(instance.log)
 
     async def load(self, game_key: tuple) -> GameInstance | None:
         """加载存档，优先 state.json，回退到 backup。兼容旧版 , 分隔存档目录。"""
@@ -1365,9 +1394,43 @@ class GameRegistry:
                 fallback="backup_state",
                 repair_hint="建议检查 data/saves 目录权限、磁盘空间和 state.json 格式。",
             )
+        self._restore_chatlog(instance, sp)
         self.register(instance)
         logger.info("存档已加载: %s, round=%d", game_key, instance.round_number)
         return instance
+
+    def _restore_chatlog(self, instance: GameInstance, sp: Path) -> None:
+        """把 chatlog.jsonl 的完整历史拼回 instance.log；老存档自动迁移。
+
+        - 新格式：chatlog.jsonl 存在 → 读它作为历史，state.json 里最近的 log 去重后合并。
+        - 老存档：无 chatlog.jsonl 但 state.json 有 log → 写入 chatlog.jsonl（自动迁移）。
+        - 幂等：state.json 的最近 log 会覆盖 chatlog 末尾重复部分，不会重复累计。
+        """
+        chatlog = self._chatlog_path(sp)
+        core_log = list(instance.log)
+        history: list = []
+        if chatlog.exists():
+            try:
+                for line in chatlog.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        history.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        logger.warning("chatlog.jsonl 含无效行，已跳过: %s", chatlog)
+            except OSError:
+                logger.exception("读取 chatlog.jsonl 失败: %s", chatlog)
+        if not history and core_log:
+            # 老存档自动迁移：把核心态里的 log 写入 chatlog.jsonl
+            self._append_chatlog(instance)
+            history = list(core_log)
+        # 合并去重：core_log 是 chatlog 末尾的最近部分，只追加 chatlog 里没有的（按条数裁剪）
+        if core_log:
+            overlap = min(len(history), len(core_log))
+            history = history + core_log[overlap:]
+        instance.log = history
+        instance.last_saved_log_count = len(history)
 
     async def recover_all(self) -> list[GameInstance]:
         """启动时恢复未完成对局；待幸运选择保持可处理，其余对局暂停。"""

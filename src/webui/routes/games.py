@@ -411,7 +411,7 @@ async def api_payment_resolve(request: web.Request) -> web.Response:
 
 
 async def api_export_game(request: web.Request) -> web.Response:
-    """导出单存档为 JSON 文件下载。"""
+    """导出单存档为 zip（含 state.json + chatlog.jsonl 完整历史）。"""
     api = _get_api(request)
     gk = api._parse_key(request.match_info["game_key"])
     registry = request.app["subsystems"].registry
@@ -422,25 +422,34 @@ async def api_export_game(request: web.Request) -> web.Response:
     if not session_uid or session_uid != inst.gm_uid:
         return web.json_response({"error": "仅 GM 可导出游戏"}, status=403)
 
+    import io
     import re
+    import zipfile
     from datetime import datetime
     save_path = registry._save_path(gk)
     state_path = save_path if save_path.exists() else save_path.with_name("state.backup.json")
     if not state_path.exists():
         return web.json_response({"error": "存档文件不存在"}, status=404)
-    try:
-        body = state_path.read_bytes()
-    except Exception as exc:
-        logger.exception("读取存档失败: %s", state_path)
-        return web.json_response({"error": "读取失败，请查看服务器日志"}, status=500)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        try:
+            zf.writestr("state.json", state_path.read_bytes())
+            chatlog = save_path.with_name("chatlog.jsonl")
+            if chatlog.exists():
+                zf.writestr("chatlog.jsonl", chatlog.read_bytes())
+        except Exception as exc:
+            logger.exception("读取存档失败: %s", state_path)
+            return web.json_response({"error": "读取失败，请查看服务器日志"}, status=500)
+    body = buffer.getvalue()
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_name = re.sub(r"[^\w一-鿿-]+", "_", inst.world_name or "save").strip("_") or "save"
-    filename = f"save_{safe_name}_{ts}.json"
-    ascii_fallback = re.sub(r"[^\x21-\x7e]", "_", filename) or f"save_{ts}.json"
+    filename = f"save_{safe_name}_{ts}.zip"
+    ascii_fallback = re.sub(r"[^\x21-\x7e]", "_", filename) or f"save_{ts}.zip"
     return web.Response(
         body=body,
-        content_type="application/json",
+        content_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{quote(filename)}',
             "Content-Length": str(len(body)),
