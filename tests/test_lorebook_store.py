@@ -189,8 +189,8 @@ class TestMigration:
             store.close()
             path.unlink(missing_ok=True)
 
-    def test_backfills_source_plugin_from_old_ids(self):
-        """老库无 source_plugin 列：打开时迁移加列 + 从 id 的 _plugin_ 标记回填插件来源。"""
+    def test_old_db_adds_source_plugin_column(self):
+        """老库无 source_plugin 列：打开时迁移加列，老条目 source_plugin 默认空串（不回填）。"""
         import gc
         import sqlite3
         t = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -209,16 +209,9 @@ class TestMigration:
                          "id TEXT PRIMARY KEY, world_id TEXT NOT NULL REFERENCES worlds(id), name TEXT NOT NULL, "
                          "type TEXT DEFAULT 'other', keywords TEXT DEFAULT '[]', content TEXT DEFAULT '', "
                          "tier TEXT DEFAULT 'background')")
-            conn.executemany(
+            conn.execute(
                 "INSERT INTO lorebook_entries (id, world_id, name, type, content) VALUES (?,?,?,?,?)",
-                [
-                    # 自动灌入格式：_plugin_{pid}_
-                    ("frieren_journey_world_plugin_frieren-journey_e1", "w1", "P", "location", "c"),
-                    # 一键导入格式：_plugin_{kind}_{pid}_
-                    ("myworld_plugin_npc_frieren-journey_hero", "w1", "N", "npc", "c"),
-                    # 用户自建，无标记
-                    ("myworld_user_note", "w1", "U", "location", "c"),
-                ],
+                ("frieren_journey_world_plugin_frieren-journey_e1", "w1", "P", "location", "c"),
             )
             conn.commit()
             conn.close()
@@ -229,11 +222,10 @@ class TestMigration:
             store.open()
             try:
                 e1 = store.get_entry("frieren_journey_world_plugin_frieren-journey_e1")
-                e2 = store.get_entry("myworld_plugin_npc_frieren-journey_hero")
-                e3 = store.get_entry("myworld_user_note")
-                assert e1["source_plugin"] == "frieren-journey"
-                assert e2["source_plugin"] == "frieren-journey"
-                assert e3["source_plugin"] == ""
+                # 列已迁移加上；老条目不回填，source_plugin 保持空串
+                assert e1 is not None
+                assert "source_plugin" in e1
+                assert e1["source_plugin"] == ""
             finally:
                 store.close()
                 del store

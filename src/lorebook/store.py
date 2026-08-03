@@ -145,7 +145,6 @@ class LorebookStore:
             except sqlite3.OperationalError:
                 pass
         self._drop_legacy_type_check()
-        self._backfill_source_plugin()
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_lorebook_source ON lorebook_entries(source_plugin)")
         self._conn.commit()
         logger.info("Lorebook 数据库已打开: %s", self.db_path)
@@ -173,36 +172,6 @@ class LorebookStore:
         self._conn.execute("ALTER TABLE lorebook_entries_new RENAME TO lorebook_entries")
         self._conn.commit()
         logger.info("已迁移 lorebook_entries 去掉 type CHECK 约束，支持 spell/class")
-
-    def _backfill_source_plugin(self) -> None:
-        """老库回填：从条目 id 的 `_plugin_` 标记推断插件来源，写入 source_plugin。
-
-        升级前老条目没有 source_plugin，卸载时认不出来源会残留。插件 id 只含
-        连字符不含下划线，按 `_` 可靠分段；一键导入格式的 kind 段跳过。
-        用户自建条目 id 无 `_plugin_` 标记，保持空串，不受影响。
-        """
-        kinds = {"npc", "item", "spell", "class"}
-        rows = self._execute(
-            "SELECT id FROM lorebook_entries WHERE source_plugin = '' AND id LIKE '%_plugin_%'"
-        ).fetchall()
-        changed = 0
-        for row in rows:
-            eid = str(row["id"] or "")
-            marker = "_plugin_"
-            idx = eid.find(marker)
-            if idx < 0:
-                continue
-            segments = eid[idx + len(marker):].split("_")
-            if not segments:
-                continue
-            plugin_id = segments[1] if segments[0] in kinds and len(segments) > 1 else segments[0]
-            if not plugin_id:
-                continue
-            self._execute("UPDATE lorebook_entries SET source_plugin = ? WHERE id = ?", (plugin_id, eid))
-            changed += 1
-        if changed:
-            self._conn.commit()
-            logger.info("已回填 %d 条插件来源的世界书条目", changed)
 
     def close(self) -> None:
         if self._conn:
