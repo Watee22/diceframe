@@ -49,6 +49,8 @@ The star count shown in the store is taken from the plugin's GitHub repository s
 | `bundled` | Maintained by the DiceFrame organization and shipped with the application | Updated with DiceFrame |
 | `approval-required` | A release expanded permissions or changed runtime behavior | Installation and updates pause for another review |
 
+`declarative` and `unrestricted-process` are determined by the plugin type descriptor (`process_mode` in `src/plugin_host/support.py`): declarative types without a process entrypoint are `declarative`, process types are `unrestricted-process`; `bundled` and `approval-required` are overlaid by release policy. New plugin types are classified automatically by their descriptor, so review rules do not need per-type edits.
+
 A third-party process runs with the operating-system privileges of the current user. Environment filtering and permission declarations are not an operating-system sandbox, so the store displays a prominent high-privilege warning.
 
 ## Later releases

@@ -49,6 +49,8 @@ DiceFrame 采用“作者维护源码仓库、官方只维护公开索引”的�
 | `bundled` | DiceFrame 组织维护并随主程序发布 | 跟随 DiceFrame 更新 |
 | `approval-required` | 新版本扩大权限或改变运行方式 | 暂停安装和更新，重新审核 |
 
+`declarative` 与 `unrestricted-process` 由插件类型 descriptor（`src/plugin_host/support.py` 的 `process_mode`）决定：无进程入口的声明型类型为 `declarative`，带进程的为 `unrestricted-process`；`bundled` 和 `approval-required` 是发布策略层叠加。新增类型自动按其 descriptor 归类，无需逐类型手改审核规则。
+
 第三方进程插件以当前操作系统用户权限运行。环境变量过滤和权限声明不是操作系统沙箱，因此商店必须明确显示高权限警告。
 
 ## 后续发布

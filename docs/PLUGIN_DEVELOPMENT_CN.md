@@ -222,6 +222,8 @@ tool
 
 ## 7. 插件类型分册
 
+> 插件类型的权威清单（支持级别、运行方式、推断权限、必需权限、内容贡献映射）由 `src/plugin_host/support.py` 的 `PLUGIN_TYPE_SUPPORT` descriptor 表单一来源驱动；新增类型只需改该表，宿主、策略、注册表与前端自动跟随。本节按类型给出作者使用指南，部分预留类型尚未接入运行时。
+
 ### 7.1 聊天桥接插件
 
 适用于 QQ/NapCat、MaiBot、Discord、Telegram 等聊天流接入。聊天桥接插件是进程型插件，必须提供 `entrypoint`。

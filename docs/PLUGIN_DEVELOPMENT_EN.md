@@ -143,6 +143,8 @@ The restricted schema uses an object root with `properties`. Supported field typ
 
 ## 7. Plugin Types
 
+> The authoritative list of plugin types (support level, runtime mode, inferred permissions, required permission, content contribution mapping) is driven by a single source: the `PLUGIN_TYPE_SUPPORT` descriptor table in `src/plugin_host/support.py`. Adding a type only requires editing that table — the host, policy, registry, and frontend follow automatically. This section is a per-type author guide; some reserved types are not yet wired to a runtime.
+
 ### 7.1 Channel Adapters
 
 Channel adapters connect QQ/NapCat, MaiBot, Discord, Telegram, or another chat stream and require an `entrypoint`. They call DiceFrame with `X-Bot-Token`. Managed plugins receive their own generated token through `TRPG_BOT_TOKEN`; an external bridge uses the global value copied from Settings → Bot API.
