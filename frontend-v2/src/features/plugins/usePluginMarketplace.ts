@@ -1,4 +1,4 @@
-import { computed, reactive, ref, type Ref } from 'vue'
+import { computed, reactive, ref, watch, type Ref } from 'vue'
 import { errorMessage } from '@/api/client'
 import { pluginApi } from '@/api/plugins'
 import { useLocale } from '@/composables/useLocale'
@@ -25,7 +25,12 @@ export function isNewerPluginVersion(latest?: string, current?: string): boolean
   return false
 }
 
-export function usePluginMarketplace(busy: Ref<string>, refreshSurfaces: () => Promise<void>) {
+export function usePluginMarketplace(
+  busy: Ref<string>,
+  refreshSurfaces: () => Promise<void>,
+  typeFilter: Ref<string>,
+  onUninstalled?: (plugin: PluginInfo, result: { lorebook_removed?: number; cards_removed?: number; worlds_removed?: number; worlds_kept?: string[] }) => void,
+) {
   const toast = useToast()
   const { t } = useLocale()
   const marketplace = ref<PluginMarketplaceItem[]>([])
@@ -35,6 +40,7 @@ export function usePluginMarketplace(busy: Ref<string>, refreshSurfaces: () => P
   const marketKeyword = ref('')
   const marketLoading = ref(false)
   const mirrorLoading = ref(false)
+  const sortMode = ref('')  // '' 默认 / stars / name-asc / name-desc
   const newMirror = reactive<PluginMirror>({
     id: '',
     name: '',
@@ -45,12 +51,40 @@ export function usePluginMarketplace(busy: Ref<string>, refreshSurfaces: () => P
   })
 
   const filteredMarketplace = computed(() => {
+    const type = typeFilter.value
     const keyword = marketKeyword.value.trim().toLowerCase()
-    if (!keyword) return marketplace.value
-    return marketplace.value.filter(item => [
-      item.id, item.name, item.description, item.repository_url, ...(item.tags || []),
-    ].some(value => String(value || '').toLowerCase().includes(keyword)))
+    const items = marketplace.value.filter(item => {
+      if (type && item.plugin_type !== type) return false
+      if (!keyword) return true
+      return [item.id, item.name, item.description, item.repository_url, ...(item.tags || [])]
+        .some(value => String(value || '').toLowerCase().includes(keyword))
+    })
+    if (sortMode.value === 'stars') {
+      return [...items].sort((a, b) => (b.stars || 0) - (a.stars || 0))
+    }
+    if (sortMode.value === 'name-asc') {
+      return [...items].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    }
+    if (sortMode.value === 'name-desc') {
+      return [...items].sort((a, b) => (b.name || '').localeCompare(a.name || ''))
+    }
+    return items
   })
+
+  // 商店分页：筛选/排序后每页 12 个
+  const page = ref(1)
+  const pageSize = 12
+  const totalMarketplace = computed(() => filteredMarketplace.value.length)
+  const totalPages = computed(() => Math.max(1, Math.ceil(totalMarketplace.value / pageSize)))
+  const paginatedMarketplace = computed(() => {
+    const start = (page.value - 1) * pageSize
+    return filteredMarketplace.value.slice(start, start + pageSize)
+  })
+  function goToPage(next: number) {
+    page.value = Math.min(Math.max(1, next), totalPages.value)
+  }
+  // 筛选/排序/关键字变化时回到第 1 页
+  watch([marketKeyword, typeFilter, sortMode], () => { page.value = 1 })
 
   function canUpdateFromStore(pluginId: string) {
     const item = marketplace.value.find(candidate => candidate.id === pluginId)
@@ -116,8 +150,9 @@ export function usePluginMarketplace(busy: Ref<string>, refreshSurfaces: () => P
     if (!window.confirm(t('confirmUninstallPlugin', { name: plugin.name }))) return
     busy.value = `${plugin.id}:uninstall`
     try {
-      await pluginApi.uninstall(plugin.id)
+      const result = await pluginApi.uninstall(plugin.id)
       toast.success(t('pluginNamedUninstalled', { name: plugin.name }))
+      onUninstalled?.(plugin, result)
       await refreshSurfaces()
     } catch (error: unknown) {
       toast.error(errorMessage(error))
@@ -203,7 +238,13 @@ export function usePluginMarketplace(busy: Ref<string>, refreshSurfaces: () => P
     marketLoading,
     mirrorLoading,
     newMirror,
+    sortMode,
     filteredMarketplace,
+    page,
+    totalMarketplace,
+    totalPages,
+    paginatedMarketplace,
+    goToPage,
     canUpdateFromStore,
     loadMarketplace,
     loadMirrors,

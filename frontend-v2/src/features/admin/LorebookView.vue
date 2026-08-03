@@ -49,7 +49,7 @@ const entries = computed(() => data.value.entries || [])
 const languageWorlds = computed(() => filterByContentLanguage(worlds.value, worldLanguage.value))
 const currentWorld = computed(() => worlds.value.find(w => worldIdOf(w) === currentWorldId.value))
 const activeLoreType = ref('all')
-const loreTypeOrder = ['npc', 'location', 'faction', 'item', 'event', 'puzzle', 'other'] as const
+const loreTypeOrder = ['npc', 'location', 'faction', 'item', 'event', 'puzzle', 'spell', 'class', 'other'] as const
 
 function worldIdOf(w: WorldSummary | undefined): string { return String(w?.id || w?.world_id || '') }
 function worldNameOf(w: WorldSummary | undefined): string { return String(w?.name || w?.world_name || w?.id || '') }
@@ -115,7 +115,7 @@ function normalizeLoreType(type: unknown): string {
   return loreTypeOrder.includes(text as (typeof loreTypeOrder)[number]) ? text : 'other'
 }
 function typeLabel(type: string | undefined) {
-  const labels: Record<string, MessageKey> = { npc: 'contentGroupNpc', location: 'loreTypeLocation', faction: 'loreTypeFaction', item: 'contentGroupItem', event: 'loreTypeEvent', puzzle: 'loreTypePuzzle', other: 'loreTypeOther' }
+  const labels: Record<string, MessageKey> = { npc: 'contentGroupNpc', location: 'loreTypeLocation', faction: 'loreTypeFaction', item: 'contentGroupItem', event: 'loreTypeEvent', puzzle: 'loreTypePuzzle', spell: 'loreTypeSpell', class: 'loreTypeClass', other: 'loreTypeOther' }
   const key = labels[String(type || '')]
   return key ? t(key) : String(type || t('loreEntry'))
 }
@@ -361,7 +361,7 @@ async function importLore(e: Event) {
 
     <Modal v-if="loreEdit" :title="loreEdit.id ? t('editLoreEntry') : t('newLoreEntry')" @close="loreEdit = null">
       <label>{{ t('name') }}<input v-model="loreEdit.name"></label>
-      <label>{{ t('type') }}<select v-model="loreEdit.type"><option value="npc">NPC</option><option value="location">{{ t('loreTypeLocation') }}</option><option value="faction">{{ t('loreTypeFaction') }}</option><option value="item">{{ t('contentGroupItem') }}</option><option value="event">{{ t('loreTypeEvent') }}</option><option value="puzzle">{{ t('loreTypePuzzle') }}</option><option value="other">{{ t('loreTypeOther') }}</option></select></label>
+      <label>{{ t('type') }}<select v-model="loreEdit.type"><option v-for="tp in loreTypeOrder" :key="tp" :value="tp">{{ typeLabel(tp) }}</option></select></label>
       <label>{{ t('tier') }}<select v-model="loreEdit.tier"><option value="core">{{ t('core') }}</option><option value="background">{{ t('background') }}</option><option value="archived">{{ t('archived') }}</option></select></label>
       <label>{{ t('keywords') }}<input :value="arrText(loreEdit.keywords)" @input="setArr('keywords', $event)" :placeholder="t('keywordsPlaceholder')"></label>
       <label>{{ t('content') }}<textarea rows="6" v-model="loreEdit.content"></textarea></label>

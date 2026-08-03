@@ -4,11 +4,22 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 from .registry import ContributionRegistry
+
+
+def safe_id_part(value: Any) -> str:
+    """归一化 id 片段：小写，非字母数字/下划线/连字符/中文替换为 _，截断 48 字符。
+
+    sync 灌入的条目 id 与卸载清理的标记匹配必须用同一实现，故集中在 content 层。
+    """
+    text = str(value or "").strip().lower()
+    text = re.sub(r"[^a-z0-9_\-一-鿿]+", "_", text)
+    return text.strip("_")[:48] or "content"
 
 
 class PluginContentCatalog:

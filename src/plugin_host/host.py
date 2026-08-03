@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .content import PluginContentCatalog
+from .content import PluginContentCatalog, safe_id_part
 from .descriptors import (
     BRIDGE_EXTENSION_STAGES,
     normalize_bridge_outputs,
@@ -46,15 +46,19 @@ from .runtime_protocol import (
     PluginProtocolError,
     validate_tool_arguments,
 )
-from .support import PLUGIN_TYPE_SUPPORT, plugin_type_support
+from .support import (
+    PLUGIN_TYPE_SUPPORT,
+    plugin_type_support,
+    plugin_type_descriptor,
+    STATIC_PLUGIN_TYPES as _STATIC_PLUGIN_TYPES,
+    RPC_PLUGIN_TYPES as _RPC_PLUGIN_TYPES,
+)
 
 _ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _BRIDGE_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _MAX_BRIDGE_IMAGE_BYTES = 10 * 1024 * 1024
 _ALLOWED_CONTROLS = {"switch", "text", "secret", "number", "select", "string-list"}
 _PLUGIN_TYPES = set(PLUGIN_TYPE_SUPPORT)
-_STATIC_PLUGIN_TYPES = {"content-pack", "theme", "map-pack"}
-_RPC_PLUGIN_TYPES = {"tool", "bot-extension"}
 _ALLOWED_PERMISSIONS = PERMISSION_DETAILS
 
 _SAFE_PARENT_ENV = {
@@ -366,6 +370,49 @@ class PluginHost:
         except (OSError, UnicodeDecodeError) as exc:
             return {"ok": False, "error": f"读取说明文档失败：{exc}", "found": False}
         return {"ok": True, "found": True, "name": docs_rel, "content": content}
+
+    def sync_lorebooks(self, lorebook_store: Any) -> int:
+        """把已启用插件的世界模板 starter_lorebook 同步到世界书库（幂等）。
+
+        插件启用后或建插件世界游戏前调用，使世界书无需先开一把游戏即可出现。
+        条目 id 用 ``{world}_plugin_{plugin_id}_{entry_id}`` 标记，便于卸载时
+        精确清理；已存在的条目跳过，可安全反复调用。
+        """
+        if not lorebook_store:
+            return 0
+        total = 0
+        for item in self.contributions.list("world_template"):
+            plugin_id = str(item.plugin_id or "")
+            runtime = self.plugins.get(plugin_id)
+            if not runtime or not runtime.config.get("enabled"):
+                continue
+            try:
+                data = json.loads(item.path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
+                continue
+            if not isinstance(data, dict) or not data.get("world_id"):
+                continue
+            world_id = str(data["world_id"])
+            if not lorebook_store.get_world(world_id):
+                lorebook_store.create_world(
+                    world_id,
+                    data.get("world_name", world_id),
+                    description=data.get("description", ""),
+                    language=data.get("language", "zh-CN"),
+                )
+            for raw in data.get("starter_lorebook", []):
+                if not isinstance(raw, dict) or not raw.get("id"):
+                    continue
+                entry_id = f"{safe_id_part(world_id)}_plugin_{safe_id_part(plugin_id)}_{safe_id_part(str(raw['id']))}"
+                if lorebook_store.get_entry(entry_id):
+                    continue
+                entry = dict(raw)
+                entry["id"] = entry_id
+                entry["world_id"] = world_id
+                entry["source_plugin"] = plugin_id
+                lorebook_store.add_entry(entry)
+                total += 1
+        return total
 
     async def install_from_zip(self, payload: bytes, *, overwrite: bool = False, allow_any_root: bool = False) -> dict[str, Any]:
         if not payload:
@@ -898,6 +945,48 @@ class PluginHost:
             archive.extractall(target_dir)
 
     @staticmethod
+    def package_files(plugin_id: str, files: dict[str, str | bytes], *, flat: bool = False) -> bytes:
+        """把内存中的插件文件打包成 zip 字节，镜像 _extract_zip 的约束。
+
+        files 的 key 是相对路径。``flat=False``（默认，.dfplugin 用）会自动加
+        ``<plugin_id>/`` 前缀；``flat=True``（仓库源码用）不加前缀，plugin.json
+        落到根目录，解压即可推到 GitHub。
+        """
+        if not _ID_RE.fullmatch(plugin_id):
+            raise ValueError("插件 ID 非法")
+        buffer = io.BytesIO()
+        seen: set[str] = set()
+        total_unpacked = 0
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for rel, content in files.items():
+                name = str(rel or "").replace("\\", "/").strip("/")
+                parts = Path(name).parts
+                if not name or Path(name).is_absolute() or any(part == ".." for part in parts):
+                    raise ValueError(f"导出路径非法：{rel}")
+                if not flat and parts[0] != plugin_id:
+                    name = f"{plugin_id}/{name}"
+                    parts = Path(name).parts
+                if len(name) > MAX_PLUGIN_PATH_CHARS:
+                    raise ValueError(f"导出路径过长：{rel}")
+                normalized = "/".join(parts).casefold()
+                if normalized in seen:
+                    raise ValueError(f"导出路径重复：{rel}")
+                seen.add(normalized)
+                data = content.encode("utf-8") if isinstance(content, str) else bytes(content)
+                if len(data) > MAX_PLUGIN_FILE_BYTES:
+                    raise ValueError(f"导出单文件过大：{rel}")
+                total_unpacked += len(data)
+                if total_unpacked > MAX_PLUGIN_UNPACKED_BYTES:
+                    raise ValueError("导出内容总体积超限")
+                if len(seen) > MAX_PLUGIN_ARCHIVE_FILES:
+                    raise ValueError("导出文件数量超限")
+                archive.writestr(name, data)
+        payload = buffer.getvalue()
+        if len(payload) > MAX_PLUGIN_PACKAGE_BYTES:
+            raise ValueError("导出包体积超限")
+        return payload
+
+    @staticmethod
     def _find_install_root(temp_dir: Path) -> Path:
         if (temp_dir / "plugin.json").exists():
             return temp_dir
@@ -967,10 +1056,9 @@ class PluginHost:
     def _validate_runtime_permissions(manifest: dict[str, Any], schema: dict[str, Any]) -> None:
         plugin_type = str(manifest.get("plugin_type") or "").strip()
         permissions = set(effective_plugin_permissions(manifest, schema))
-        if plugin_type == "tool" and "tool.execute" not in permissions:
-            raise ValueError("tool 插件必须声明 tool.execute 权限")
-        if plugin_type == "bot-extension" and "bot.extend" not in permissions:
-            raise ValueError("bot-extension 插件必须声明 bot.extend 权限")
+        required = plugin_type_descriptor(plugin_type).get("required_permission")
+        if required and required not in permissions:
+            raise ValueError(f"{plugin_type} 插件必须声明 {required} 权限")
 
     def _plugin_permissions(self, runtime: PluginRuntime) -> list[str]:
         return effective_plugin_permissions(runtime.manifest, runtime.schema)

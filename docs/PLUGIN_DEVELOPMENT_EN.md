@@ -304,6 +304,30 @@ The community index is [diceframe/diceframe-plugins](https://github.com/dicefram
 
 When installing, DiceFrame resolves the repository's latest stable GitHub Release to an exact commit, downloads GitHub's source archive for that commit, and validates the manifest again. Declarative plugins can update automatically when their permissions and runtime type do not expand. Process plugins notify the user and require confirmation. Any permission or runtime expansion is approval-required. `official`, `verified`, and `community` describe source/review status, not a security guarantee. See [PLUGIN_REGISTRY_EN.md](PLUGIN_REGISTRY_EN.md).
 
+### 8.1 Content Guidelines
+
+Content packs are distributed to a public community. Authors must keep content lawful, healthy, and respectful of others' rights. The lines below apply to every plugin text: lorebook, characters, rules, NPCs, items, and so on.
+
+**Hard lines (violation rejects or delists)**
+
+- No political content.
+- No pornography, sexualization of minors, or gambling promotion; no excessive gore, terrorism, or incitement to crime.
+- No copyright or trademark infringement: cite sources for others' work; derivative works must state they are unofficial and that copyright belongs to the original creator.
+- No defamation or insult of real people; no leaking others' private information.
+
+**Community standards**
+
+- No hate or discrimination (race, gender, religion, region, etc.) and no extremism.
+- Descriptions must match real capabilities; do not present "reserved" or "partial" support as complete.
+- No unrelated promotion, advertising, or off-topic traffic diversion.
+
+**Derivative works**
+
+- State the original work in README and description; mark as unofficial derivative; copyright stays with the original creator.
+- Delist immediately if the original creator objects to derivatives.
+
+DiceFrame does not pre-screen every community item; maintainers delist violating plugins when found or upon a verified report.
+
 ## 9. Install, Update, and Uninstall Semantics
 
 - Store install: resolve the latest stable GitHub Release to an exact commit, extract to a temporary directory, validate, then move to `plugins/<id>/`.

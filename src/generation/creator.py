@@ -102,14 +102,14 @@ Requirements:
 - Avoid overpowered words like invincible, omnipotent, instant kill, absolute, immortal, creator, or control-all.
 - Names, roles, skills, equipment, and background must be natural English and match the requested genre."""
 
-_LOREBOOK_ENTRIES_SYSTEM_PROMPT = """你是TRPG世界书编辑。用户会用自然语言描述世界观、势力、地点、人物、事件或谜题。
+_LOREBOOK_ENTRIES_SYSTEM_PROMPT = """你是TRPG世界书编辑。用户会用自然语言描述世界观、势力、地点、人物、事件、谜题、法术或职业。
 
 请把描述整理成可直接写入世界书的结构化条目。输出严格 JSON，不要包含 JSON 外文本：
 {
   "entries": [
     {
       "name": "条目名",
-      "type": "npc|location|item|event|puzzle|faction|other",
+      "type": "npc|location|item|event|puzzle|faction|spell|class|other",
       "keywords": ["用于触发的关键词", "别名"],
       "content": "80-180字，说明这个条目对跑团叙事的作用、关系和可用细节",
       "tier": "core|background",
@@ -127,14 +127,14 @@ _LOREBOOK_ENTRIES_SYSTEM_PROMPT = """你是TRPG世界书编辑。用户会用自
 - 不要编造压倒性神器或无解设定；内容应方便 GM 在剧情中调用。
 - 所有文本使用中文。"""
 
-_LOREBOOK_ENTRIES_SYSTEM_PROMPT_EN = """You are a TRPG lorebook editor. The user describes setting material, factions, locations, characters, events, or puzzles in natural language.
+_LOREBOOK_ENTRIES_SYSTEM_PROMPT_EN = """You are a TRPG lorebook editor. The user describes setting material, factions, locations, characters, events, puzzles, spells, or classes in natural language.
 
 Convert the description into structured lorebook entries. Output strict JSON only, with no text outside JSON:
 {
   "entries": [
     {
       "name": "entry name",
-      "type": "npc|location|item|event|puzzle|faction|other",
+      "type": "npc|location|item|event|puzzle|faction|spell|class|other",
       "keywords": ["trigger keyword", "alias"],
       "content": "80-180 words explaining how this entry matters to play, its relationships, and usable details",
       "tier": "core|background",

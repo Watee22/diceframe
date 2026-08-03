@@ -217,6 +217,7 @@ def _normalize_market_item(item: Any) -> dict[str, Any] | None:
         "release_tag": str(item.get("release_tag") or ""),
         "release_url": str(item.get("release_url") or ""),
         "branch": str(item.get("branch") or "main"),
+        "stars": int(item.get("stars") or 0),
         "distribution": distribution,
         "risk_level": risk_level,
         "update_policy": update_policy,

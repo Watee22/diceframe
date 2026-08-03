@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .support import STATIC_PLUGIN_TYPES, plugin_type_descriptor
+
 PERMISSION_DETAILS = {
     "process.spawn": "启动独立插件进程",
     "network.client": "由插件进程访问外部网络",
@@ -19,8 +21,6 @@ PERMISSION_DETAILS = {
     "bot.extend": "扩展 Bot Bridge 命令、消息处理和展示",
 }
 
-DECLARATIVE_PLUGIN_TYPES = {"content-pack", "theme", "map-pack"}
-
 
 def has_entrypoint(manifest: dict[str, Any]) -> bool:
     command = manifest.get("entrypoint")
@@ -30,7 +30,7 @@ def has_entrypoint(manifest: dict[str, Any]) -> bool:
 def plugin_risk_level(manifest: dict[str, Any]) -> str:
     if has_entrypoint(manifest):
         return "unrestricted-process"
-    if str(manifest.get("plugin_type") or "") in DECLARATIVE_PLUGIN_TYPES:
+    if str(manifest.get("plugin_type") or "") in STATIC_PLUGIN_TYPES:
         return "declarative"
     return "unsupported-runtime"
 
@@ -46,18 +46,7 @@ def effective_plugin_permissions(manifest: dict[str, Any], schema: dict[str, Any
     plugin_type = str(manifest.get("plugin_type") or "")
     if has_entrypoint(manifest):
         inferred.update({"process.spawn", "plugin.data"})
-    if plugin_type == "channel-adapter":
-        inferred.update({"network.client", "diceframe.http"})
-    elif plugin_type == "content-pack":
-        inferred.update({"content.read", "content.import"})
-    elif plugin_type == "theme":
-        inferred.add("theme.tokens")
-    elif plugin_type == "map-pack":
-        inferred.add("map.assets")
-    elif plugin_type == "tool":
-        inferred.add("tool.execute")
-    elif plugin_type == "bot-extension":
-        inferred.add("bot.extend")
+    inferred.update(plugin_type_descriptor(plugin_type).get("inferred_permissions") or [])
     return sorted(inferred)
 
 

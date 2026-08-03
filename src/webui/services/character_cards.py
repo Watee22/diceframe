@@ -97,6 +97,12 @@ def _to_character_card(character: dict, source: str = "") -> dict[str, Any]:
         value = character.get(key, cs.get(key, ""))
         if value not in (None, ""):
             card[key] = str(value)
+    # 插件导入的卡带来源标记（source_plugin / plugin_content_id），保存时必须透传；
+    # 否则卸载清理按 source_plugin 过滤会匹配不到，插件卡成了无法清理的残留。
+    for key in ("source_plugin", "plugin_content_id"):
+        value = character.get(key, cs.get(key))
+        if value not in (None, ""):
+            card[key] = value
     return card
 
 

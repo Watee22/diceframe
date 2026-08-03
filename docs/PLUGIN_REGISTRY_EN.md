@@ -32,6 +32,14 @@ Automation checks at least the following:
 
 Automation never executes the plugin entrypoint and cannot prove that executable code is harmless.
 
+## Content review
+
+Automation covers structure and code safety only; it does not pre-screen content. All plugin text (lorebook, characters, rules, NPCs, items, etc.) must follow the Content Guidelines (section 8.1 of the plugin development guide). Maintainers check legal lines, community standards, and copyright during human review; verified reports lead to delisting.
+
+## Popularity
+
+The star count shown in the store is taken from the plugin's GitHub repository stars, refreshed daily by the index sync job. It reflects repository popularity and is a reference only, not a DiceFrame quality endorsement.
+
 ## Risk and update policy
 
 | Level | Meaning | Updates |
@@ -63,10 +71,6 @@ Another review is required for repository or ID changes, ownership transfer, per
 
 Local `.dfplugin` installation does not imply registry approval. The installer still enforces path, symlink, duplicate-entry, file-count, size, manifest, and schema checks.
 
-## Token separation
-
-DiceFrame generates an independent internal token for every process plugin that requires `diceframe.http` and injects it only into that plugin process. Bundled plugins such as QQ / NapCat require no DiceFrame Bot Token configuration. The global Bot API Token in settings is only for external programs connected by the user; regenerating it does not affect bundled plugins.
-
 ## Registry statement
 
-Inclusion means that registry format and review rules were satisfied. It is not a warranty of security, quality, continued maintenance, or suitability. Listings expose the repository, risk level, permissions, and update policy.
+Inclusion means that registry format and review rules were satisfied. It is not a warranty of security, quality, continued maintenance, or suitability. Listings expose the repository, risk level, permissions, and update policy. Plugins that violate the content guidelines are delisted.

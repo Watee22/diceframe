@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import { errorMessage } from '@/api/client'
 import { pluginApi } from '@/api/plugins'
 import { useLocale } from '@/composables/useLocale'
@@ -9,6 +9,7 @@ export function useInstalledPlugins(
   busy: Ref<string>,
   afterLoad: () => Promise<unknown>,
   refreshSurfaces: () => Promise<void>,
+  typeFilter: Ref<string>,
 ) {
   const toast = useToast()
   const { t } = useLocale()
@@ -17,6 +18,12 @@ export function useInstalledPlugins(
   const loading = ref(false)
   const installFile = ref<File | null>(null)
   const overwriteInstall = ref(false)
+
+  // 按插件类型筛选（'' = 全部）。内容包/主题/工具/适配器等不再混在一起。
+  const filteredPlugins = computed(() => {
+    const type = typeFilter.value
+    return type ? plugins.value.filter(p => p.plugin_type === type) : plugins.value
+  })
 
   async function load() {
     loading.value = true
@@ -207,6 +214,7 @@ export function useInstalledPlugins(
 
   return {
     plugins,
+    filteredPlugins,
     expandedPluginNames,
     loading,
     installFile,

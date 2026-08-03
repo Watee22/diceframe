@@ -7,33 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
-_CONTENT_CONTRIBUTIONS = {
-    "rules": "rule",
-    "world_templates": "world_template",
-    "character_templates": "character_template",
-    "characters": "character_template",
-    "npcs": "npc",
-    "npc": "npc",
-    "items": "item",
-    "spells": "spell",
-    "classes": "class",
-}
-_THEME_CONTRIBUTIONS = {
-    "theme": "theme",
-    "themes": "theme",
-}
-_MAP_CONTRIBUTIONS = {
-    "locations": "map_location",
-    "icons": "map_icon",
-    "scenes": "map_scene",
-    "grids": "map_grid",
-}
-_CONTRIBUTION_TYPES = {
-    "content-pack": _CONTENT_CONTRIBUTIONS,
-    "theme": _THEME_CONTRIBUTIONS,
-    "map-pack": _MAP_CONTRIBUTIONS,
-}
+from .support import plugin_type_descriptor
 
 
 @dataclass(frozen=True)
@@ -79,7 +53,7 @@ class ContributionRegistry:
 
     def register_static_plugin(self, manifest: dict[str, Any], plugin_dir: Path) -> list[PluginContribution]:
         plugin_type = str(manifest.get("plugin_type") or "")
-        mapping = _CONTRIBUTION_TYPES.get(plugin_type)
+        mapping = plugin_type_descriptor(plugin_type).get("contributes")
         if not mapping:
             return []
         contributes = manifest.get("contributes")

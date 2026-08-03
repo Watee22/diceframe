@@ -1,4 +1,4 @@
-import { api } from '@/api/client'
+import { api, apiBlob } from '@/api/client'
 import type {
   PluginContentImportResponse,
   PluginContentResponse,
@@ -35,6 +35,16 @@ export const pluginApi = {
       '/plugins/content/import-all',
       { method: 'POST', body: JSON.stringify({ plugin_id: pluginId, target_world_id: targetWorldId }) },
     ),
+  exportContent: (payload: {
+    plugin_id: string
+    name: string
+    version: string
+    description: string
+    world_id?: string
+    card_ids?: string[]
+    rule_id?: string
+    flat?: boolean
+  }) => apiBlob('/plugins/export', { method: 'POST', body: JSON.stringify(payload) }),
   updateConfig: (pluginId: string, payload: Record<string, unknown>) =>
     api(pluginPath(pluginId, '/config'), { method: 'PUT', body: JSON.stringify(payload) }),
   restart: (pluginId: string) => api(pluginPath(pluginId, '/restart'), { method: 'POST' }),
@@ -51,7 +61,9 @@ export const pluginApi = {
     }),
   update: (pluginId: string) => api(pluginPath(pluginId, '/update'), { method: 'POST' }),
   uninstall: (pluginId: string, deleteData = false) =>
-    api(pluginPath(pluginId), { method: 'DELETE', body: JSON.stringify({ delete_data: deleteData }) }),
+    api<{ ok: boolean; uninstalled?: boolean; lorebook_removed?: number; cards_removed?: number; worlds_removed?: number; worlds_kept?: string[] }>(
+      pluginPath(pluginId), { method: 'DELETE', body: JSON.stringify({ delete_data: deleteData }) },
+    ),
   addMirror: (mirror: PluginMirror) =>
     api('/plugins/mirrors', { method: 'POST', body: JSON.stringify(mirror) }),
   updateMirror: (mirrorId: string, patch: Partial<PluginMirror>) =>

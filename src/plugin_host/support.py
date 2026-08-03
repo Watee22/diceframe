@@ -1,47 +1,145 @@
-"""Truthful support levels for DiceFrame plugin types."""
+"""DiceFrame 插件类型 descriptor：单一来源。
+
+每个插件类型的支持级别、运行方式、推断权限、必需权限、内容贡献映射都集中在这里。
+新增插件类型只改本表，宿主/策略/注册表/前端按数据驱动，不再散落硬编码。
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
-PLUGIN_TYPE_SUPPORT: dict[str, dict[str, str]] = {
+# 运行方式
+PROCESS_MODE_STATIC = "static"                # 无进程：内容包/主题/地图包
+PROCESS_MODE_RPC_TOOL = "rpc-tool"            # JSON-RPC stdio 进程：工具
+PROCESS_MODE_RPC_BRIDGE = "rpc-bridge"         # JSON-RPC stdio 进程：Bot Bridge 扩展
+PROCESS_MODE_PLAIN_SUBPROCESS = "plain-subprocess"  # 普通进程（非 RPC）：渠道适配器
+PROCESS_MODE_NONE = "none"                     # 预留类型，无运行时
+
+PROCESS_MODES = (
+    PROCESS_MODE_STATIC,
+    PROCESS_MODE_RPC_TOOL,
+    PROCESS_MODE_RPC_BRIDGE,
+    PROCESS_MODE_PLAIN_SUBPROCESS,
+    PROCESS_MODE_NONE,
+)
+
+# 内容贡献字段 -> 资源 kind 映射（原 registry.py 的 _CONTENT/_THEME/_MAP_CONTRIBUTIONS）
+_CONTENT_CONTRIBUTIONS = {
+    "rules": "rule",
+    "world_templates": "world_template",
+    "character_templates": "character_template",
+    "characters": "character_template",
+    "npcs": "npc",
+    "npc": "npc",
+    "items": "item",
+    "spells": "spell",
+    "classes": "class",
+}
+_THEME_CONTRIBUTIONS = {"theme": "theme", "themes": "theme"}
+_MAP_CONTRIBUTIONS = {
+    "locations": "map_location",
+    "icons": "map_icon",
+    "scenes": "map_scene",
+    "grids": "map_grid",
+}
+
+PLUGIN_TYPE_SUPPORT: dict[str, dict[str, Any]] = {
     "channel-adapter": {
         "level": "supported",
         "summary": "可作为独立进程连接聊天平台并调用 DiceFrame HTTP API",
+        "process_mode": PROCESS_MODE_PLAIN_SUBPROCESS,
+        "inferred_permissions": ["network.client", "diceframe.http"],
+        "required_permission": None,
+        "contributes": None,
     },
     "content-pack": {
         "level": "supported",
         "summary": "可注册规则、世界、角色、NPC、道具、法术和职业内容",
+        "process_mode": PROCESS_MODE_STATIC,
+        "inferred_permissions": ["content.read", "content.import"],
+        "required_permission": None,
+        "contributes": _CONTENT_CONTRIBUTIONS,
     },
     "theme": {
         "level": "supported",
         "summary": "可注册安全的主题颜色变量",
+        "process_mode": PROCESS_MODE_STATIC,
+        "inferred_permissions": ["theme.tokens"],
+        "required_permission": None,
+        "contributes": _THEME_CONTRIBUTIONS,
     },
     "map-pack": {
         "level": "partial",
         "summary": "可注册地点和地图素材，暂不包含实时战棋与地图编辑器",
+        "process_mode": PROCESS_MODE_STATIC,
+        "inferred_permissions": ["map.assets"],
+        "required_permission": None,
+        "contributes": _MAP_CONTRIBUTIONS,
     },
     "import-export": {
         "level": "reserved",
         "summary": "仅保留清单类型，尚未接入统一导入导出流程",
+        "process_mode": PROCESS_MODE_NONE,
+        "inferred_permissions": [],
+        "required_permission": None,
+        "contributes": None,
     },
     "provider": {
         "level": "reserved",
         "summary": "仅保留清单类型，尚未接入模型 Provider 运行时",
+        "process_mode": PROCESS_MODE_NONE,
+        "inferred_permissions": [],
+        "required_permission": None,
+        "contributes": None,
     },
     "tool": {
         "level": "supported",
         "summary": "可通过受限 JSON-RPC 协议注册并执行结构化工具",
+        "process_mode": PROCESS_MODE_RPC_TOOL,
+        "inferred_permissions": ["tool.execute"],
+        "required_permission": "tool.execute",
+        "contributes": None,
     },
     "bot-extension": {
         "level": "supported",
         "summary": "可扩展 Bot Bridge 命令、消息处理和文本/图片/卡片渲染",
+        "process_mode": PROCESS_MODE_RPC_BRIDGE,
+        "inferred_permissions": ["bot.extend"],
+        "required_permission": "bot.extend",
+        "contributes": None,
     },
 }
 
+_DEFAULT_DESCRIPTOR: dict[str, Any] = {
+    "level": "unsupported",
+    "summary": "DiceFrame 不识别此插件类型",
+    "process_mode": PROCESS_MODE_NONE,
+    "inferred_permissions": [],
+    "required_permission": None,
+    "contributes": None,
+}
+
+# 派生集合：无进程类型（可省 entrypoint / declarative 风险）与 RPC 进程类型
+STATIC_PLUGIN_TYPES = frozenset(
+    t for t, d in PLUGIN_TYPE_SUPPORT.items() if d["process_mode"] == PROCESS_MODE_STATIC
+)
+RPC_PLUGIN_TYPES = frozenset(
+    t for t, d in PLUGIN_TYPE_SUPPORT.items()
+    if d["process_mode"] in (PROCESS_MODE_RPC_TOOL, PROCESS_MODE_RPC_BRIDGE)
+)
+
 
 def plugin_type_support(plugin_type: str) -> dict[str, Any]:
-    support = PLUGIN_TYPE_SUPPORT.get(plugin_type)
-    if support:
-        return dict(support)
+    """返回面向商店/前端的 support level + summary（兼容旧调用方）。"""
+    descriptor = PLUGIN_TYPE_SUPPORT.get(plugin_type)
+    if descriptor:
+        return {"level": descriptor["level"], "summary": descriptor["summary"]}
     return {"level": "unsupported", "summary": "DiceFrame 不识别此插件类型"}
+
+
+def plugin_type_descriptor(plugin_type: str) -> dict[str, Any]:
+    """返回完整 descriptor 副本；未知类型返回默认 descriptor。"""
+    descriptor = PLUGIN_TYPE_SUPPORT.get(plugin_type)
+    if descriptor:
+        return dict(descriptor)
+    return dict(_DEFAULT_DESCRIPTOR)

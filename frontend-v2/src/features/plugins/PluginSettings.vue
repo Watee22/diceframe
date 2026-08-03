@@ -2,14 +2,15 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   NButton, NCheckbox, NCollapse, NCollapseItem, NIcon, NInput, NInputNumber,
-  NSelect, NSpin, NSwitch, NTabPane, NTabs, NTag,
+  NModal, NPagination, NSelect, NSpin, NSwitch, NTabPane, NTabs, NTag,
 } from 'naive-ui'
 import {
   AddOutline, ChevronDown, ChevronUp, CloudDownloadOutline, CreateOutline,
-  ExtensionPuzzleOutline, RefreshOutline, TrashOutline,
+  ExtensionPuzzleOutline, RefreshOutline, Star, TrashOutline,
 } from '@vicons/ionicons5'
 import { useTheme } from '@/composables/useTheme'
 import { useLocale } from '@/composables/useLocale'
+import { useToast } from '@/composables/useToast'
 import type { MessageKey } from '@/i18n'
 import type { PluginInfo } from '@/api/types'
 import NapcatGuide from '@/components/plugins/NapcatGuide.vue'
@@ -18,14 +19,47 @@ import { usePluginContent } from './usePluginContent'
 import { useInstalledPlugins } from './useInstalledPlugins'
 import { usePluginMarketplace } from './usePluginMarketplace'
 import { usePluginTools } from './usePluginTools'
+import { usePluginExport } from './usePluginExport'
 
 const { t } = useLocale()
+const toast = useToast()
 const { pluginThemes, pluginThemeId, loadPluginThemes, applyPluginTheme, clearPluginTheme } = useTheme()
 const busy = ref('')
+// 插件类型筛选（已装 + 商店共用同一筛选值）：内容包/主题/工具/适配器不再混在一起
+const typeFilter = ref('')
+const pluginTypeFilters: { value: string; labelKey: MessageKey }[] = [
+  { value: 'content-pack', labelKey: 'pluginTypeContentPack' },
+  { value: 'theme', labelKey: 'pluginTypeTheme' },
+  { value: 'tool', labelKey: 'pluginTypeTool' },
+  { value: 'channel-adapter', labelKey: 'pluginTypeChannelAdapter' },
+  { value: 'map-pack', labelKey: 'pluginTypeMapPack' },
+]
+const sortOptions = [
+  { label: t('pluginSortDefault'), value: '' },
+  { label: t('pluginSortStars'), value: 'stars' },
+  { label: t('pluginSortNameAsc'), value: 'name-asc' },
+  { label: t('pluginSortNameDesc'), value: 'name-desc' },
+]
 const {
   tools, toolInputs, toolResults, toolsLoading,
   toolKey, loadTools, setToolInput, invokeTool,
 } = usePluginTools(busy)
+const {
+  loading: authorLoading,
+  packId, packName, packVersion, packDescription,
+  selectedWorldId, selectedRuleId, selectedCardIds,
+  worldOptions: authorWorldOptions, ruleOptions: authorRuleOptions, cardOptions: authorCardOptions,
+  loadAuthorData, exportPack,
+} = usePluginExport(busy)
+const showExportModal = ref(false)
+let authorLoaded = false
+async function openExportModal() {
+  showExportModal.value = true
+  if (!authorLoaded) {
+    authorLoaded = true
+    await loadAuthorData()
+  }
+}
 const {
   contentByPlugin, contentGroupCount, contentLoading, contentTargetWorldId, worldOptions,
   loadContentResources, loadWorlds, contentTitle, contentSubtitle, importContent, importAllContent,
@@ -38,13 +72,28 @@ async function refreshPluginSurfaces() {
 
 const {
   mirrors, mirrorTests, marketplaceSource, marketKeyword,
-  marketLoading, mirrorLoading, newMirror, filteredMarketplace,
+  marketLoading, mirrorLoading, newMirror, sortMode, filteredMarketplace,
+  page, totalPages, paginatedMarketplace, goToPage,
   canUpdateFromStore, loadMarketplace, loadMirrors, installMarketPlugin,
   updateInstalledPlugin, uninstallPlugin, addMirror, saveMirror,
   deleteMirror, testMirror, openUrl, isNewerVersion,
-} = usePluginMarketplace(busy, refreshPluginSurfaces)
+} = usePluginMarketplace(busy, refreshPluginSurfaces, typeFilter, (plugin, result) => {
+  // 卸载后：若正在用这个插件的主题则清除引用；并提示清掉了什么
+  const theme = pluginThemes.value.find(item => item.plugin_id === plugin.id)
+  if (theme && pluginThemeId.value === theme.id) clearPluginTheme()
+  if (result.lorebook_removed || result.cards_removed || result.worlds_removed) {
+    toast.success(t('pluginUninstallCleaned', {
+      entries: result.lorebook_removed || 0,
+      cards: result.cards_removed || 0,
+      worlds: result.worlds_removed || 0,
+    }))
+  }
+  if (result.worlds_kept?.length) {
+    toast.warning(t('pluginUninstallWorldsKept', { count: result.worlds_kept.length }))
+  }
+})
 const {
-  plugins, expandedPluginNames, loading, installFile, overwriteInstall,
+  plugins, filteredPlugins, expandedPluginNames, loading, installFile, overwriteInstall,
   load, ordered, value, textValue, selectValue, numberValue, set,
   listValue, secretPlaceholder, showGroup, parseList, save, restart,
   clearCardCache, toggleRunning, toggleEnabled, onPluginFile, installPlugin, rescanLocalPlugins,
@@ -52,6 +101,7 @@ const {
   busy,
   () => Promise.all([loadPluginThemes(), loadTools()]),
   refreshPluginSurfaces,
+  typeFilter,
 )
 const themeOptions = computed(() => pluginThemes.value.map(theme => ({
   label: `${theme.name}${theme.plugin_name ? ` · ${theme.plugin_name}` : ''}`,
@@ -66,6 +116,7 @@ function pluginTypeLabel(type?: string): string {
     'import-export': 'pluginTypeImportExport',
     'provider': 'pluginTypeProvider',
     'tool': 'pluginTypeTool',
+    'bot-extension': 'pluginTypeBotExtension',
   }
   return labels[type || ''] ? t(labels[type || '']) : type || t('uncategorized')
 }
@@ -149,10 +200,15 @@ onMounted(async () => {
           </div>
         </section>
 
-        <p v-if="!plugins.length" class="muted">{{ t('noPluginsAvailable') }}</p>
+        <div class="type-filter-row">
+          <NButton size="tiny" :type="typeFilter === '' ? 'primary' : 'default'" @click="typeFilter = ''">{{ t('pluginFilterAll') }}</NButton>
+          <NButton v-for="opt in pluginTypeFilters" :key="opt.value" size="tiny" :type="typeFilter === opt.value ? 'primary' : 'default'" @click="typeFilter = opt.value">{{ t(opt.labelKey) }}</NButton>
+        </div>
+
+        <p v-if="!filteredPlugins.length" class="muted">{{ plugins.length ? t('pluginTypeFilterEmpty') : t('noPluginsAvailable') }}</p>
 
         <NCollapse v-model:expanded-names="expandedPluginNames">
-          <NCollapseItem v-for="p in plugins" :key="p.id" :name="p.id" class="plugin-collapsible">
+          <NCollapseItem v-for="p in filteredPlugins" :key="p.id" :name="p.id" class="plugin-collapsible">
             <template #header>
               <div class="plugin-head">
                 <h3>{{ p.name }}</h3>
@@ -272,19 +328,24 @@ onMounted(async () => {
     <NTabPane name="marketplace" :tab="t('pluginMarketplaceTab')">
       <section class="toolbar-row">
         <NInput v-model:value="marketKeyword" :placeholder="t('pluginSearchPlaceholder')" clearable />
+        <NSelect v-model:value="sortMode" class="market-sort-select" :options="sortOptions" :placeholder="t('pluginSort')" />
         <NButton :loading="marketLoading" @click="loadMarketplace">
           <template #icon><NIcon :component="RefreshOutline" /></template>
           {{ t('refresh') }}
         </NButton>
       </section>
+      <div class="type-filter-row">
+        <NButton size="tiny" :type="typeFilter === '' ? 'primary' : 'default'" @click="typeFilter = ''">{{ t('pluginFilterAll') }}</NButton>
+        <NButton v-for="opt in pluginTypeFilters" :key="opt.value" size="tiny" :type="typeFilter === opt.value ? 'primary' : 'default'" @click="typeFilter = opt.value">{{ t(opt.labelKey) }}</NButton>
+      </div>
       <p v-if="marketplaceSource?.mirror_name" class="muted source-line">
         {{ t('source') }}: {{ marketplaceSource.mirror_name }}, {{ marketplaceSource.elapsed_ms || 0 }} ms
       </p>
       <NSpin :show="marketLoading">
         <div class="market-grid">
-          <article v-for="item in filteredMarketplace" :key="item.id" class="market-card">
+          <article v-for="item in paginatedMarketplace" :key="item.id" class="market-card">
             <div class="market-title">
-              <NIcon :component="ExtensionPuzzleOutline" />
+              <NIcon :component="ExtensionPuzzleOutline" :size="26" class="market-title-icon" />
               <div>
                 <h3>{{ item.name }}</h3>
                 <p class="muted">{{ item.id }} · {{ item.version || t('unknownVersion') }}</p>
@@ -292,6 +353,10 @@ onMounted(async () => {
             </div>
             <p class="market-desc">{{ item.description || t('noDescription') }}</p>
             <div class="tag-row">
+              <NTag v-if="item.stars" size="small" class="stars-tag" :title="t('pluginStars', { count: item.stars })">
+                <template #icon><NIcon :component="Star" /></template>
+                {{ item.stars }}
+              </NTag>
               <NTag v-if="item.plugin_type" size="small">{{ pluginTypeLabel(item.plugin_type) }}</NTag>
               <NTag v-if="item.support?.level === 'partial'" type="warning" size="small">{{ t('pluginSupportPartial') }}</NTag>
               <NTag v-if="item.support?.level === 'reserved'" type="error" size="small">{{ t('pluginSupportReserved') }}</NTag>
@@ -324,6 +389,9 @@ onMounted(async () => {
               </NButton>
             </div>
           </article>
+        </div>
+        <div v-if="totalPages > 1" class="market-pagination">
+          <NPagination :page="page" :page-count="totalPages" @update:page="goToPage" />
         </div>
         <p v-if="!filteredMarketplace.length" class="muted">{{ t('marketplaceNoMatches') }}</p>
       </NSpin>
@@ -409,6 +477,10 @@ onMounted(async () => {
         <NButton :loading="contentLoading" @click="loadContentResources">
           <template #icon><NIcon :component="RefreshOutline" /></template>
           {{ t('refresh') }}
+        </NButton>
+        <NButton type="primary" @click="openExportModal" class="create-pack-btn">
+          <template #icon><NIcon :component="CreateOutline" /></template>
+          {{ t('createContentPack') }}
         </NButton>
       </section>
       <NSpin :show="contentLoading">
@@ -529,6 +601,67 @@ onMounted(async () => {
       </NSpin>
     </NTabPane>
   </NTabs>
+
+  <NModal v-model:show="showExportModal" preset="card" :title="t('exportPackTitle')" :bordered="false" style="max-width: 720px;">
+    <p class="muted">{{ t('exportPackHelp') }}</p>
+    <NSpin :show="authorLoading">
+      <div class="plugin-form-grid">
+        <div class="field">
+          <label class="input-label">
+            <span class="field-title">{{ t('packId') }}</span>
+            <NInput v-model:value="packId" placeholder="my-cool-pack" />
+          </label>
+        </div>
+        <div class="field">
+          <label class="input-label">
+            <span class="field-title">{{ t('packName') }}</span>
+            <NInput v-model:value="packName" />
+          </label>
+        </div>
+        <div class="field">
+          <label class="input-label">
+            <span class="field-title">{{ t('packVersion') }}</span>
+            <NInput v-model:value="packVersion" />
+          </label>
+        </div>
+        <div class="field field-wide">
+          <label class="input-label">
+            <span class="field-title">{{ t('packDescription') }}</span>
+            <NInput v-model:value="packDescription" type="textarea" :rows="2" />
+          </label>
+        </div>
+        <div class="field field-wide">
+          <label class="input-label">
+            <span class="field-title">{{ t('selectWorld') }}</span>
+            <NSelect v-model:value="selectedWorldId" :options="authorWorldOptions" clearable />
+          </label>
+        </div>
+        <div class="field field-wide">
+          <label class="input-label">
+            <span class="field-title">{{ t('selectRule') }}</span>
+            <NSelect v-model:value="selectedRuleId" :options="authorRuleOptions" clearable />
+          </label>
+        </div>
+        <div class="field field-wide">
+          <label class="input-label">
+            <span class="field-title">{{ t('selectCards') }}</span>
+            <NSelect v-model:value="selectedCardIds" :options="authorCardOptions" multiple clearable />
+          </label>
+        </div>
+      </div>
+      <div class="actions-row">
+        <NButton type="primary" :loading="busy === 'export-pack'" @click="exportPack(false)">
+          <template #icon><NIcon :component="CloudDownloadOutline" /></template>
+          {{ t('exportPack') }}
+        </NButton>
+        <NButton :loading="busy === 'export-pack'" :title="t('exportRepoSourceHint')" @click="exportPack(true)">
+          <template #icon><NIcon :component="CreateOutline" /></template>
+          {{ t('exportRepoSource') }}
+        </NButton>
+      </div>
+      <p class="muted hint">{{ t('exportPackFormatsHint') }}</p>
+    </NSpin>
+  </NModal>
 </template>
 
 <style scoped>
@@ -762,6 +895,27 @@ onMounted(async () => {
   margin-bottom: 14px;
 }
 
+.type-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.create-pack-btn {
+  margin-left: auto;
+}
+
+.market-sort-select {
+  width: 150px;
+}
+
+.market-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
 .source-line {
   margin: -4px 0 14px;
 }
@@ -924,9 +1078,13 @@ onMounted(async () => {
 
 .market-title {
   display: grid;
-  grid-template-columns: 24px 1fr;
+  grid-template-columns: 28px 1fr;
   gap: 10px;
   align-items: start;
+}
+
+.market-title-icon {
+  color: var(--gold-2);
 }
 
 .market-title p,
@@ -952,6 +1110,10 @@ onMounted(async () => {
 
 .tag-row {
   margin: 12px 0;
+}
+
+.stars-tag :deep(.n-icon) {
+  color: var(--gold-2, #d99b45);
 }
 
 .mirror-form {

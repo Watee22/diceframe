@@ -203,6 +203,21 @@ class WebAPI:
     def import_all_plugin_content(self, plugin_id: str, target_world_id: str = "") -> dict[str, Any]:
         return plugins.import_all_plugin_content(self, plugin_id, target_world_id)
 
+    def export_content_pack(
+        self,
+        plugin_id: str,
+        name: str,
+        version: str,
+        description: str,
+        world_id: str = "",
+        card_ids: list[str] | None = None,
+        rule_id: str = "",
+        flat: bool = False,
+    ) -> dict[str, Any]:
+        return plugins.export_content_pack(
+            self, plugin_id, name, version, description, world_id, card_ids, rule_id, flat
+        )
+
     def plugin_asset_path(self, plugin_id: str, relative_path: str) -> Path:
         return plugins.plugin_asset_path(self, plugin_id, relative_path)
 
@@ -375,6 +390,12 @@ class WebAPI:
     # ---- 世界编辑器 ----
 
     def list_worlds(self) -> dict[str, Any]:
+        # 确保已启用插件的世界模板世界书已同步（幂等）
+        if self._plugins:
+            try:
+                plugins.sync_plugin_lorebooks(self)
+            except Exception:
+                logger.warning("list_worlds 同步插件世界书失败，已跳过", exc_info=True)
         return worlds.list_worlds(self)
 
     def create_world(self, name: str, description: str = "", language: str = "") -> dict[str, Any]:
@@ -479,7 +500,7 @@ class WebAPI:
             try:
                 plugins.sync_plugin_lorebooks(self)
             except Exception:
-                pass
+                logger.warning("list_world_templates 同步插件世界书失败，已跳过", exc_info=True)
         return worlds.list_world_templates(self)
 
     def cleanup_orphan_game_templates(self, world_id: str = "") -> int:

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("trpg")
 
-_LOREBOOK_ENTRY_TYPES = {"npc", "location", "item", "event", "puzzle", "faction", "other"}
+_LOREBOOK_ENTRY_TYPES = {"npc", "location", "item", "event", "puzzle", "faction", "spell", "class", "other"}
 _LOREBOOK_TIERS = {"core", "background", "archived"}
 _MAX_GENERATED_LOREBOOK_CONTENT = 2000
 _LEGACY_GAME_TEMPLATE_ID = re.compile(r"^.+_(?:copy|blank)_\d+$")

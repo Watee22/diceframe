@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import textwrap
 import zipfile
@@ -185,8 +186,20 @@ def test_sync_plugin_lorebook_and_cleanup(tmp_path):
         def list_worlds(self): return [{"world_id": w} for w in self.worlds]
         def list_entries(self, wid): return [e for e in self.entries.values() if e["world_id"] == wid]
         def delete_entry(self, eid): self.entries.pop(eid, None)
+        def delete_entries_by_plugin(self, pid):
+            before = len(self.entries)
+            self.entries = {k: v for k, v in self.entries.items() if v.get("source_plugin") != pid}
+            return before - len(self.entries)
+        def list_plugin_worlds(self, pid):
+            wids = {e["world_id"] for e in self.entries.values() if e.get("source_plugin") == pid}
+            return [{"id": w, "world_id": w} for w in wids]
+        def delete_world_cascade(self, wid):
+            self.entries = {k: v for k, v in self.entries.items() if v["world_id"] != wid}
+            self.worlds.pop(wid, None)
     class _Api:
-        def __init__(self): self._plugins = host; self._lore = _Lore()
+        def __init__(self): self._plugins = host; self._lore = _Lore(); self._reg = None
+        def list_character_cards(self): return {"cards": []}
+        def delete_character_card(self, card_id): return {"ok": True}
 
     api = _Api()
     synced = sync_plugin_lorebooks(api)
@@ -195,11 +208,321 @@ def test_sync_plugin_lorebook_and_cleanup(tmp_path):
     assert len(api._lore.entries) == 1
     entry_id = next(iter(api._lore.entries))
     assert "_plugin_worlds_" in entry_id
+    assert next(iter(api._lore.entries.values())).get("source_plugin") == "worlds"
 
     removed = cleanup_plugin_lorebook(api, "worlds")
     assert removed["ok"] is True
     assert removed["removed"] == 1
     assert len(api._lore.entries) == 0
+
+
+def test_cleanup_removes_imported_and_auto_synced_entries(tmp_path):
+    """卸载按 source_plugin 清掉一键导入和自动灌入条目；用户自建保留；插件创建的世界有用户内容则保留。"""
+    from src.webui.services.plugins import cleanup_plugin_lorebook
+
+    plugins = tmp_path / "plugins"
+    host = PluginHost(plugins, tmp_path / "data")
+
+    class _Lore:
+        def __init__(self):
+            self.entries = {
+                # 一键导入到你世界书的条目
+                "myworld_plugin_npc_frieren-journey_frieren_himmel_hero": {"id": "myworld_plugin_npc_frieren-journey_frieren_himmel_hero", "world_id": "myworld", "source_plugin": "frieren-journey"},
+                # 自动灌入插件世界书的条目
+                "frieren_journey_world_plugin_frieren-journey_e1": {"id": "frieren_journey_world_plugin_frieren-journey_e1", "world_id": "frieren_journey_world", "source_plugin": "frieren-journey"},
+                # 用户自建条目，不能删
+                "myworld_user_note": {"id": "myworld_user_note", "world_id": "myworld", "source_plugin": ""},
+            }
+        def delete_entries_by_plugin(self, pid):
+            before = len(self.entries)
+            self.entries = {k: v for k, v in self.entries.items() if v.get("source_plugin") != pid}
+            return before - len(self.entries)
+        def list_plugin_worlds(self, pid):
+            wids = {e["world_id"] for e in self.entries.values() if e.get("source_plugin") == pid}
+            return [{"id": w, "world_id": w} for w in wids]
+        def list_entries(self, wid): return [e for e in self.entries.values() if e["world_id"] == wid]
+        def delete_world_cascade(self, wid):
+            self.entries = {k: v for k, v in self.entries.items() if v["world_id"] != wid}
+
+    class _Api:
+        _plugins = host
+        _lore = _Lore()
+        _reg = None
+        def list_character_cards(self): return {"cards": []}
+        def delete_character_card(self, card_id): return {"ok": True}
+
+    api = _Api()
+    result = cleanup_plugin_lorebook(api, "frieren-journey")
+
+    assert result["removed"] == 2
+    # 插件创建的两个世界都含有用户自建内容或来源条目 -> 保留（无对局引用但世界仍有条目）
+    # myworld 还有用户自建条目 -> 保留；frieren_journey_world 已无条目 -> 可删
+    assert "myworld_user_note" in api._lore.entries
+    assert result["worlds_removed"] == 1
+    assert "myworld" in result["worlds_kept"]
+
+
+@pytest.mark.asyncio
+async def test_update_plugin_config_enables_and_syncs_lorebook(tmp_path):
+    """启用内容包时应立即同步世界书。
+
+    回归：update_plugin_config 曾用 result.get('ok') 判断成功，而 public_detail 不含
+    ok 字段，导致启用时 sync 永不触发--只能靠后续开世界书页才同步。
+    """
+    from src.webui.services.plugins import update_plugin_config
+
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, "worlds", plugin_type="content-pack", entrypoint=False,
+                 manifest_extra={"contributes": {"world_templates": ["worlds/*.json"]}})
+    worlds_dir = plugins / "worlds" / "worlds"
+    worlds_dir.mkdir(parents=True)
+    (worlds_dir / "w.json").write_text(json.dumps({
+        "world_id": "w", "world_name": "W", "default_rule": "none",
+        "starter_lorebook": [
+            {"id": "e1", "name": "Place", "type": "location", "keywords": ["P"], "content": "a place", "tier": "core"},
+        ],
+    }), encoding="utf-8")
+    data_dir = tmp_path / "data"
+    cfg = data_dir / "worlds"
+    cfg.mkdir(parents=True)
+    # 初始禁用，模拟用户刚装好内容包还没勾选启用
+    (cfg / "config.json").write_text(json.dumps({"enabled": False}), encoding="utf-8")
+    host = PluginHost(plugins, data_dir)
+    host.discover()
+
+    class _Lore:
+        def __init__(self): self.entries = {}; self.worlds = {}
+        def get_world(self, wid): return self.worlds.get(wid)
+        def create_world(self, wid, name, description="", language=""): self.worlds[wid] = {"world_id": wid}
+        def get_entry(self, eid): return self.entries.get(eid)
+        def add_entry(self, e): self.entries[e["id"]] = e
+    class _Api:
+        def __init__(self): self._plugins = host; self._lore = _Lore()
+        def list_character_cards(self): return {"cards": []}
+        def delete_character_card(self, card_id): return {"ok": True}
+
+    api = _Api()
+    result = await update_plugin_config(api, "worlds", {"enabled": True})
+
+    assert result["ok"] is True
+    assert result["enabled"] is True
+    # 启用即同步：无需先开世界书页，条目已带插件标记灌入
+    assert len(api._lore.entries) == 1
+    assert "_plugin_worlds_" in next(iter(api._lore.entries))
+
+
+@pytest.mark.asyncio
+async def test_export_content_pack_round_trips_through_install(tmp_path):
+    """导出 .dfplugin -> 装回 -> 世界/角色卡正确出现，且 starter_lorebook 无损。"""
+    import zipfile
+    from src.webui.services.plugins import export_content_pack
+
+    plugins_dir = tmp_path / "plugins"
+    data_dir = tmp_path / "data"
+    rules_dir = tmp_path / "rules"
+    rules_dir.mkdir(parents=True)
+    (rules_dir / "myrule.json").write_text(json.dumps({
+        "rule_id": "myrule", "rule_name": "测试规则", "dice_system": "none",
+    }), encoding="utf-8")
+    host = PluginHost(plugins_dir, data_dir)
+
+    class _Lore:
+        world = {"id": "w1", "name": "W", "description": "a world", "language": "zh-CN"}
+        entries = [
+            {"id": "e1", "world_id": "w1", "name": "Place", "type": "location",
+             "keywords": ["P"], "content": "a place", "tier": "core"},
+            {"id": "e2", "world_id": "w1", "name": "NPC", "type": "npc",
+             "keywords": ["N"], "content": "a npc", "tier": "background",
+             "unreliable": True, "order": 50, "group": "boss",
+             "match_mode": "all", "sticky": 3, "connected_to": ["e1"]},
+        ]
+        def get_world(self, wid): return self.world if wid == "w1" else None
+        def list_entries(self, wid): return list(self.entries) if wid == "w1" else []
+
+    card = {"id": "card1", "character_name": "Hero", "race": "人类", "class": "战士",
+            "attributes": {"str": 16}, "skills": [], "background": "bg", "rule_id": "myrule",
+            "source": "插件内容包：old-pack", "plugin_content_id": "hero",
+            "source_plugin": "old-pack", "portrait": {"kind": "builtin", "id": "warrior"}}
+
+    class _Api:
+        def __init__(self):
+            self._plugins = host
+            self._lore = _Lore()
+            self._rules_dir = rules_dir
+        def list_character_cards(self):
+            return {"cards": [card], "total": 1}
+
+    api = _Api()
+    result = export_content_pack(api, "my-pack", "我的包", "1.0.0", "导出测试",
+                                 world_id="w1", card_ids=["card1"], rule_id="myrule")
+
+    assert result["ok"] is True
+    assert result["filename"] == "my-pack-1.0.0.dfplugin"
+    # 包结构：manifest + schema + readme + 世界 + 角色 + 规则
+    archive = zipfile.ZipFile(io.BytesIO(result["payload"]))
+    names = set(archive.namelist())
+    assert "my-pack/plugin.json" in names
+    assert "my-pack/config.schema.json" in names
+    assert "my-pack/README.md" in names
+    assert "my-pack/content/worlds/w1.json" in names
+    assert "my-pack/content/rules/myrule.json" in names
+    char_files = [n for n in names if n.startswith("my-pack/content/characters/")]
+    assert len(char_files) == 1
+    # starter_lorebook 无损：2 条，类型/内容保留
+    world_tmpl = json.loads(archive.read("my-pack/content/worlds/w1.json"))
+    assert world_tmpl["world_id"] == "w1"
+    assert world_tmpl["default_rule"] == "myrule"
+    assert len(world_tmpl["starter_lorebook"]) == 2
+    assert {e["type"] for e in world_tmpl["starter_lorebook"]} == {"location", "npc"}
+    # P2：starter_lorebook 元数据无损往返（unreliable/order/group/match_mode/sticky/connected_to 保留）
+    e2 = next(e for e in world_tmpl["starter_lorebook"] if e["id"] == "e2")
+    assert e2["unreliable"] is True
+    assert e2["order"] == 50
+    assert e2["group"] == "boss"
+    assert e2["match_mode"] == "all"
+    assert e2["sticky"] == 3
+    assert e2["connected_to"] == ["e1"]
+    assert "world_id" not in e2  # 内部追踪字段不进模板
+    # 卡模板：builtin portrait 保留；source/source_plugin/plugin_content_id 不泄露原插件身份
+    char_tmpl = json.loads(archive.read(char_files[0]))
+    assert char_tmpl.get("portrait") == {"kind": "builtin", "id": "warrior"}
+    assert "source_plugin" not in char_tmpl
+    assert "source" not in char_tmpl
+    assert "plugin_content_id" not in char_tmpl
+
+    # 装回：install_from_zip 能装，启用后世界与角色卡可读
+    await host.install_from_zip(result["payload"], overwrite=True)
+    assert "my-pack" in host.plugins
+    await host.update_config("my-pack", {"enabled": True})
+    loaded = host.load_world_template("w1")
+    assert loaded and loaded.get("world_id") == "w1"
+    assert len(loaded.get("starter_lorebook", [])) == 2
+    cards = host.list_content_resources("character_template").get("character_template", [])
+    assert len(cards) == 1
+    assert cards[0].get("character_name") == "Hero"
+
+
+def test_export_content_pack_flat_has_plugin_json_at_root(tmp_path):
+    """flat=True 导出仓库源码：plugin.json 在根目录，无 <id>/ 前缀，解压即可推到 GitHub。"""
+    import zipfile
+    from src.webui.services.plugins import export_content_pack
+
+    plugins_dir = tmp_path / "plugins"
+    data_dir = tmp_path / "data"
+    host = PluginHost(plugins_dir, data_dir)
+
+    class _Lore:
+        world = {"id": "w1", "name": "W", "description": "d", "language": "zh-CN"}
+        def get_world(self, wid): return self.world if wid == "w1" else None
+        def list_entries(self, wid): return [] if wid != "w1" else [
+            {"id": "e1", "world_id": "w1", "name": "P", "type": "location", "content": "c", "tier": "core"}]
+
+    class _Api:
+        def __init__(self): self._plugins = host; self._lore = _Lore(); self._rules_dir = tmp_path
+        def list_character_cards(self): return {"cards": []}
+
+    api = _Api()
+    result = export_content_pack(api, "my-pack", "我的包", "1.0.0", "desc", world_id="w1", flat=True)
+
+    assert result["ok"] is True
+    assert result["filename"] == "my-pack-1.0.0-src.zip"
+    archive = zipfile.ZipFile(io.BytesIO(result["payload"]))
+    names = archive.namelist()
+    # plugin.json 在根目录，没有 my-pack/ 前缀
+    assert "plugin.json" in names
+    assert "config.schema.json" in names
+    assert "content/worlds/w1.json" in names
+    assert not any(n.startswith("my-pack/") for n in names), names
+
+
+def test_cleanup_plugin_removes_imported_character_cards(tmp_path):
+    from src.webui.services.plugins import cleanup_plugin_lorebook
+
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, "packs", plugin_type="content-pack", entrypoint=False)
+    data_dir = tmp_path / "data"
+    (data_dir / "packs").mkdir(parents=True)
+    (data_dir / "packs" / "config.json").write_text(json.dumps({"enabled": True}), encoding="utf-8")
+    host = PluginHost(plugins, data_dir)
+    host.discover()
+
+    cards_path = tmp_path / "character_cards.json"
+    cards_path.write_text(json.dumps([
+        {"id": "plugin_packs_hero", "character_name": "Hero", "schema_version": 2, "source_plugin": "packs"},
+        {"id": "plugin_packs_fern", "character_name": "Fern", "schema_version": 2, "source_plugin": "packs"},
+        {"id": "user_card", "character_name": "My Card", "schema_version": 2, "source_plugin": ""},
+    ]), encoding="utf-8")
+
+    class _Api:
+        _plugins = host
+        _lore = None
+        _reg = None
+        _character_cards_path = cards_path
+        def __init__(self): self.cards = json.loads(cards_path.read_text(encoding="utf-8"))
+        def list_character_cards(self):
+            return {"cards": self.cards, "total": len(self.cards)}
+        def delete_character_card(self, card_id):
+            self.cards = [c for c in self.cards if c.get("id") != card_id]
+            cards_path.write_text(json.dumps(self.cards), encoding="utf-8")
+            return {"ok": True, "card_id": card_id}
+
+    api = _Api()
+    result = cleanup_plugin_lorebook(api, "packs")
+
+    assert result["ok"] is True
+    assert result["cards_removed"] == 2
+    remaining = [c["character_name"] for c in api.cards]
+    assert remaining == ["My Card"]
+
+
+def test_cleanup_removes_cards_saved_through_real_save_path(tmp_path):
+    """回归：插件角色卡经 save_character_card 落盘后 source_plugin 必须保留，
+    否则 cleanup_plugin_lorebook 按 source_plugin 过滤会匹配不到。曾经因为
+    _to_character_card 重建卡时丢弃该字段，导致卸载清理在生产中空转。"""
+    from src.webui.services.plugins import cleanup_plugin_lorebook, _content_to_character_card
+    from src.webui.services.character_cards import (
+        save_character_card, list_character_cards, delete_character_card,
+    )
+
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, "packs", plugin_type="content-pack", entrypoint=False)
+    data_dir = tmp_path / "data"
+    (data_dir / "packs").mkdir(parents=True)
+    (data_dir / "packs" / "config.json").write_text(json.dumps({"enabled": True}), encoding="utf-8")
+    host = PluginHost(plugins, data_dir)
+    host.discover()
+
+    cards_path = tmp_path / "character_cards.json"
+
+    class _Api:
+        _plugins = host
+        _lore = None
+        _reg = None
+        _character_cards_path = cards_path
+        def list_character_cards(self):
+            return list_character_cards(self)
+        def delete_character_card(self, card_id):
+            return delete_character_card(self, card_id)
+
+    api = _Api()
+    # 走真实导入链路：_content_to_character_card 打 source_plugin 标 -> save_character_card 落盘
+    card = _content_to_character_card({
+        "id": "hero",
+        "plugin_id": "packs",
+        "plugin_name": "packs",
+        "character_name": "Hero",
+        "race": "人类",
+        "class": "冒险者",
+    })
+    save_character_card(api, card)
+
+    persisted = list_character_cards(api)["cards"]
+    assert len(persisted) == 1
+    assert persisted[0]["source_plugin"] == "packs"  # Bug 1：曾在此处被 _to_character_card 丢弃
+
+    result = cleanup_plugin_lorebook(api, "packs")
+    assert result["cards_removed"] == 1
+    assert list_character_cards(api)["cards"] == []
 
 
 def test_invalid_manifest_isolated_from_other_plugins(tmp_path):

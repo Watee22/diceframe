@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 from pathlib import Path
 
 from src.lorebook.bootstrap import ensure_world_from_template
@@ -187,3 +188,110 @@ class TestMigration:
         finally:
             store.close()
             path.unlink(missing_ok=True)
+
+    def test_backfills_source_plugin_from_old_ids(self):
+        """老库无 source_plugin 列：打开时迁移加列 + 从 id 的 _plugin_ 标记回填插件来源。"""
+        import gc
+        import sqlite3
+        t = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        t.close()
+        path = Path(t.name)
+        try:
+            # 构造旧库：无 source_plugin 列，插入老格式条目
+            conn = sqlite3.connect(str(path))
+            conn.execute("CREATE TABLE worlds (id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+                         "description TEXT DEFAULT '', language TEXT DEFAULT 'zh-CN', "
+                         "author TEXT DEFAULT '', version TEXT DEFAULT '1.0', "
+                         "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+                         "updated_at TEXT NOT NULL DEFAULT (datetime('now')))")
+            conn.execute("INSERT INTO worlds (id, name) VALUES ('w1', '测试')")
+            conn.execute("CREATE TABLE lorebook_entries ("
+                         "id TEXT PRIMARY KEY, world_id TEXT NOT NULL REFERENCES worlds(id), name TEXT NOT NULL, "
+                         "type TEXT DEFAULT 'other', keywords TEXT DEFAULT '[]', content TEXT DEFAULT '', "
+                         "tier TEXT DEFAULT 'background')")
+            conn.executemany(
+                "INSERT INTO lorebook_entries (id, world_id, name, type, content) VALUES (?,?,?,?,?)",
+                [
+                    # 自动灌入格式：_plugin_{pid}_
+                    ("frieren_journey_world_plugin_frieren-journey_e1", "w1", "P", "location", "c"),
+                    # 一键导入格式：_plugin_{kind}_{pid}_
+                    ("myworld_plugin_npc_frieren-journey_hero", "w1", "N", "npc", "c"),
+                    # 用户自建，无标记
+                    ("myworld_user_note", "w1", "U", "location", "c"),
+                ],
+            )
+            conn.commit()
+            conn.close()
+            del conn
+            gc.collect()
+
+            store = LorebookStore(path)
+            store.open()
+            try:
+                e1 = store.get_entry("frieren_journey_world_plugin_frieren-journey_e1")
+                e2 = store.get_entry("myworld_plugin_npc_frieren-journey_hero")
+                e3 = store.get_entry("myworld_user_note")
+                assert e1["source_plugin"] == "frieren-journey"
+                assert e2["source_plugin"] == "frieren-journey"
+                assert e3["source_plugin"] == ""
+            finally:
+                store.close()
+                del store
+                gc.collect()
+        finally:
+            # Windows 上 sqlite WAL 句柄释放是异步的，清理失败不影响测试结果
+            for _ in range(20):
+                try:
+                    path.unlink(missing_ok=True)
+                    break
+                except PermissionError:
+                    time.sleep(0.1)
+
+    def test_drop_legacy_type_check_allows_spell_class(self):
+        """老库 type 列带 CHECK 约束：打开时重建表去掉约束，能插入 spell/class。"""
+        import gc
+        import sqlite3
+        t = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        t.close()
+        path = Path(t.name)
+        try:
+            # 构造老库：带 CHECK 约束，无 source_plugin 列
+            conn = sqlite3.connect(str(path))
+            conn.execute("CREATE TABLE worlds (id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+                         "description TEXT DEFAULT '', language TEXT DEFAULT 'zh-CN', "
+                         "author TEXT DEFAULT '', version TEXT DEFAULT '1.0', "
+                         "created_at TEXT NOT NULL DEFAULT (datetime('now')), "
+                         "updated_at TEXT NOT NULL DEFAULT (datetime('now')))")
+            conn.execute("INSERT INTO worlds (id, name) VALUES ('w1', '测试')")
+            conn.execute("CREATE TABLE lorebook_entries ("
+                         "id TEXT PRIMARY KEY, world_id TEXT NOT NULL REFERENCES worlds(id), name TEXT NOT NULL, "
+                         "type TEXT NOT NULL DEFAULT 'other' CHECK(type IN ('npc','location','item','event','puzzle','faction','other')), "
+                         "keywords TEXT DEFAULT '[]', content TEXT DEFAULT '', tier TEXT DEFAULT 'background')")
+            conn.execute("INSERT INTO lorebook_entries (id, world_id, name, type) VALUES ('e1','w1','老条目','location')")
+            conn.commit()
+            conn.close()
+            del conn
+            gc.collect()
+
+            store = LorebookStore(path)
+            store.open()
+            try:
+                # 旧库已含 w1；不要 create_world（INSERT OR REPLACE 会级联删 e1）
+                # 新类型 spell/class 能插入（CHECK 已去掉）
+                store.add_entry({"id": "s1", "world_id": "w1", "name": "火球", "type": "spell", "content": "c"})
+                store.add_entry({"id": "c1", "world_id": "w1", "name": "战士", "type": "class", "content": "c"})
+                assert store.get_entry("s1")["type"] == "spell"
+                assert store.get_entry("c1")["type"] == "class"
+                # 老条目保留
+                assert store.get_entry("e1")["type"] == "location"
+            finally:
+                store.close()
+                del store
+                gc.collect()
+        finally:
+            for _ in range(20):
+                try:
+                    path.unlink(missing_ok=True)
+                    break
+                except PermissionError:
+                    time.sleep(0.1)

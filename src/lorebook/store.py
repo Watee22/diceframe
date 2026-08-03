@@ -27,8 +27,7 @@ CREATE TABLE IF NOT EXISTS lorebook_entries (
     id TEXT PRIMARY KEY,
     world_id TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    type TEXT NOT NULL DEFAULT 'other'
-        CHECK(type IN ('npc','location','item','event','puzzle','faction','other')),
+    type TEXT NOT NULL DEFAULT 'other',
     keywords TEXT NOT NULL DEFAULT '[]',
     content TEXT NOT NULL DEFAULT '',
     unreliable INTEGER DEFAULT 0,
@@ -47,6 +46,7 @@ CREATE TABLE IF NOT EXISTS lorebook_entries (
     "group" TEXT DEFAULT '',
     group_weight INTEGER DEFAULT 1,
     connected_to TEXT DEFAULT '[]',
+    source_plugin TEXT DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -58,7 +58,6 @@ CREATE INDEX IF NOT EXISTS idx_lorebook_tier  ON lorebook_entries(world_id, tier
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 """
-
 # 表升级
 _MIGRATE_CONSTANT = "ALTER TABLE lorebook_entries ADD COLUMN is_constant INTEGER DEFAULT 0;"
 _MIGRATE_MATCH_MODE = "ALTER TABLE lorebook_entries ADD COLUMN match_mode TEXT DEFAULT 'any' CHECK(match_mode IN ('any','all','not_any','not_all'));"
@@ -71,6 +70,52 @@ _MIGRATE_GROUP = 'ALTER TABLE lorebook_entries ADD COLUMN "group" TEXT DEFAULT \
 _MIGRATE_GROUP_WEIGHT = "ALTER TABLE lorebook_entries ADD COLUMN group_weight INTEGER DEFAULT 1;"
 _MIGRATE_CONNECTED = "ALTER TABLE lorebook_entries ADD COLUMN connected_to TEXT DEFAULT '[]';"
 _MIGRATE_WORLD_LANGUAGE = "ALTER TABLE worlds ADD COLUMN language TEXT DEFAULT 'zh-CN';"
+_MIGRATE_SOURCE_PLUGIN = "ALTER TABLE lorebook_entries ADD COLUMN source_plugin TEXT DEFAULT '';"
+
+# 迁移后的 lorebook_entries 目标列（新表结构，顺序即 _drop_legacy_type_check_sql 的建表顺序）
+_LOREBOOK_NEW_COLUMNS = (
+    "id", "world_id", "name", "type", "keywords", "content", "unreliable",
+    "sync_on_enter", "tier", "triggers_recursive", "visible_to", "is_constant",
+    "match_mode", "sticky", "cooldown", "delay", "order", "probability",
+    "group", "group_weight", "connected_to", "source_plugin", "created_at", "updated_at",
+)
+
+
+def _drop_legacy_type_check_sql() -> str:
+    """去掉老库 type 列 CHECK 约束的整表重建 SQL。
+
+    老库可能列不全（迁移前的历史版本），不能假设 22 列齐全。先由调用方读
+    PRAGMA table_info 取真实列，这里只定义新表结构（含 source_plugin），
+    数据复制用显式列名对齐。
+    """
+    return """
+CREATE TABLE lorebook_entries_new (
+    id TEXT PRIMARY KEY,
+    world_id TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'other',
+    keywords TEXT NOT NULL DEFAULT '[]',
+    content TEXT NOT NULL DEFAULT '',
+    unreliable INTEGER DEFAULT 0,
+    sync_on_enter INTEGER DEFAULT 0,
+    tier TEXT DEFAULT 'background',
+    triggers_recursive TEXT DEFAULT '[]',
+    visible_to TEXT DEFAULT '[]',
+    is_constant INTEGER DEFAULT 0,
+    match_mode TEXT DEFAULT 'any',
+    sticky INTEGER DEFAULT 0,
+    cooldown INTEGER DEFAULT 0,
+    delay INTEGER DEFAULT 0,
+    "order" INTEGER DEFAULT 100,
+    probability INTEGER DEFAULT 100,
+    "group" TEXT DEFAULT '',
+    group_weight INTEGER DEFAULT 1,
+    connected_to TEXT DEFAULT '[]',
+    source_plugin TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"""
 
 
 class LorebookStore:
@@ -93,14 +138,71 @@ class LorebookStore:
         for mig in (_MIGRATE_CONSTANT, _MIGRATE_MATCH_MODE, _MIGRATE_STICKY,
                      _MIGRATE_COOLDOWN, _MIGRATE_DELAY, _MIGRATE_ORDER,
                      _MIGRATE_PROBABILITY, _MIGRATE_GROUP, _MIGRATE_GROUP_WEIGHT,
-                      _MIGRATE_CONNECTED, _MIGRATE_WORLD_LANGUAGE):
+                      _MIGRATE_CONNECTED, _MIGRATE_WORLD_LANGUAGE, _MIGRATE_SOURCE_PLUGIN):
             try:
                 self._conn.execute(mig)
                 self._conn.commit()
             except sqlite3.OperationalError:
                 pass
+        self._drop_legacy_type_check()
+        self._backfill_source_plugin()
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_lorebook_source ON lorebook_entries(source_plugin)")
         self._conn.commit()
         logger.info("Lorebook 数据库已打开: %s", self.db_path)
+
+    def _drop_legacy_type_check(self) -> None:
+        """去掉老库 type 列的 CHECK 约束，允许新类型 spell/class。
+
+        旧版建表语句带 `CHECK(type IN (...))`，无法插入 spell/class。通过检查
+        建表 SQL 是否含 CHECK 判断：含则整表重建去掉约束。仅老库触发一次。
+        """
+        row = self._execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='lorebook_entries'").fetchone()
+        table_sql = str(row[0] or "") if row else ""
+        if "CHECK" not in table_sql.upper():
+            return
+        # 整表重建：按新表列显式对齐，老表缺的列用 DEFAULT 补齐
+        old_cols = [r["name"] for r in self._execute("PRAGMA table_info(lorebook_entries)")]
+        shared = [c for c in _LOREBOOK_NEW_COLUMNS if c in old_cols]
+        col_sql = ", ".join(f'"{c}"' for c in shared)
+        self._conn.executescript(_drop_legacy_type_check_sql())
+        if shared:
+            self._execute(
+                f"INSERT INTO lorebook_entries_new ({col_sql}) SELECT {col_sql} FROM lorebook_entries"
+            )
+        self._conn.execute("DROP TABLE lorebook_entries")
+        self._conn.execute("ALTER TABLE lorebook_entries_new RENAME TO lorebook_entries")
+        self._conn.commit()
+        logger.info("已迁移 lorebook_entries 去掉 type CHECK 约束，支持 spell/class")
+
+    def _backfill_source_plugin(self) -> None:
+        """老库回填：从条目 id 的 `_plugin_` 标记推断插件来源，写入 source_plugin。
+
+        升级前老条目没有 source_plugin，卸载时认不出来源会残留。插件 id 只含
+        连字符不含下划线，按 `_` 可靠分段；一键导入格式的 kind 段跳过。
+        用户自建条目 id 无 `_plugin_` 标记，保持空串，不受影响。
+        """
+        kinds = {"npc", "item", "spell", "class"}
+        rows = self._execute(
+            "SELECT id FROM lorebook_entries WHERE source_plugin = '' AND id LIKE '%_plugin_%'"
+        ).fetchall()
+        changed = 0
+        for row in rows:
+            eid = str(row["id"] or "")
+            marker = "_plugin_"
+            idx = eid.find(marker)
+            if idx < 0:
+                continue
+            segments = eid[idx + len(marker):].split("_")
+            if not segments:
+                continue
+            plugin_id = segments[1] if segments[0] in kinds and len(segments) > 1 else segments[0]
+            if not plugin_id:
+                continue
+            self._execute("UPDATE lorebook_entries SET source_plugin = ? WHERE id = ?", (plugin_id, eid))
+            changed += 1
+        if changed:
+            self._conn.commit()
+            logger.info("已回填 %d 条插件来源的世界书条目", changed)
 
     def close(self) -> None:
         if self._conn:
@@ -157,8 +259,8 @@ class LorebookStore:
             "INSERT OR REPLACE INTO lorebook_entries "
             "(id, world_id, name, type, keywords, content, unreliable, "
             " sync_on_enter, tier, triggers_recursive, visible_to, is_constant, match_mode, "
-            " sticky, cooldown, delay, \"order\", probability, \"group\", group_weight, connected_to) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " sticky, cooldown, delay, \"order\", probability, \"group\", group_weight, connected_to, source_plugin) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (entry["id"], entry["world_id"], entry["name"], entry.get("type", "other"),
              keywords, entry.get("content", ""),
              int(entry.get("unreliable", False)),
@@ -174,7 +276,8 @@ class LorebookStore:
              int(entry.get("probability", 100)),
              entry.get("group", ""),
              int(entry.get("group_weight", 1)),
-             connected),
+             connected,
+             entry.get("source_plugin", "")),
         )
         self._conn.commit()
 
@@ -223,6 +326,30 @@ class LorebookStore:
         self._execute("DELETE FROM worlds WHERE id = ?", (world_id,))
         self._conn.commit()
 
+    def count_entries_by_plugin(self, plugin_id: str) -> int:
+        row = self._execute(
+            "SELECT COUNT(*) FROM lorebook_entries WHERE source_plugin = ?", (plugin_id,)
+        ).fetchone()
+        return int(row[0] if row else 0)
+
+    def delete_entries_by_plugin(self, plugin_id: str) -> int:
+        """删除该插件来源的全部世界书条目，返回删除条数。"""
+        cur = self._execute(
+            "DELETE FROM lorebook_entries WHERE source_plugin = ?", (plugin_id,)
+        )
+        self._conn.commit()
+        return cur.rowcount
+
+    def list_plugin_worlds(self, plugin_id: str) -> list[dict]:
+        """该插件创建的、仍含其来源条目的世界（用于条件删除判定）。"""
+        rows = self._execute(
+            "SELECT DISTINCT w.* FROM worlds w "
+            "JOIN lorebook_entries e ON e.world_id = w.id "
+            "WHERE e.source_plugin = ?",
+            (plugin_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def list_entries(self, world_id: str, entry_type: str | None = None) -> list[dict]:
         if entry_type:
             rows = self._execute(
@@ -264,4 +391,5 @@ def _row_to_entry(row: sqlite3.Row) -> dict:
     d["group"] = d.get("group", "")
     d["group_weight"] = int(d.get("group_weight", 1))
     d["connected_to"] = json.loads(d.get("connected_to", "[]"))
+    d["source_plugin"] = d.get("source_plugin", "") or ""
     return d

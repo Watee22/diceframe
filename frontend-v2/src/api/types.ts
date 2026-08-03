@@ -773,6 +773,7 @@ export interface PluginMarketplaceItem {
   release_tag?: string
   release_url?: string
   branch?: string
+  stars?: number
   distribution?: 'repository' | 'bundled' | string
   risk_level?: 'declarative' | 'unrestricted-process' | 'bundled' | 'unknown' | string
   update_policy?: 'automatic' | 'notify' | 'application' | 'approval-required' | 'blocked' | string
