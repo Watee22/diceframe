@@ -190,3 +190,83 @@ async def test_streaming_download_uses_the_download_timeout(monkeypatch, tmp_pat
     assert target.read_bytes() == b"payload"
     assert captured["timeout"].total is None
     assert captured["timeout"].sock_read == 60
+
+
+class StarMirrors:
+    """针对 list_plugins 的 fake：fetch_raw 返回插件列表，fetch_github_api 返回 star。"""
+
+    def __init__(self, raw_items: list, star_count: int | None = 5):
+        self._raw = raw_items
+        self._star_count = star_count
+        self.github_calls = 0
+
+    async def fetch_raw(self, *_args, **_kwargs):
+        return FetchResult(ok=True, data=json.dumps(self._raw), status=200)
+
+    async def fetch_github_api(self, _api_path, **_kwargs):
+        self.github_calls += 1
+        if self._star_count is None:
+            return FetchResult(ok=False, error="unreachable", status=0)
+        return FetchResult(ok=True, data=json.dumps({"stargazers_count": self._star_count}), status=200)
+
+    async def fetch_github_url(self, *_args, **_kwargs):
+        raise AssertionError("not used")
+
+
+def _star_raw_item(repository_url: str = "https://github.com/example/demo", stars: int = 2):
+    return {
+        "id": "demo-pack",
+        "repository_url": repository_url,
+        "stars": stars,
+        "distribution": "repository",
+        "manifest": {
+            "id": "demo-pack", "name": "Demo", "version": "1.0.0",
+            "plugin_type": "content-pack", "permissions": [],
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_marketplace_stars_fetched_live_and_cached():
+    from src.plugin_host.marketplace import _STARS_CACHE
+    _STARS_CACHE.clear()
+    mirrors = StarMirrors([_star_raw_item()], star_count=5)
+    marketplace = PluginMarketplace(mirrors)
+
+    result = await marketplace.list_plugins()
+    assert result["ok"] is True
+    # 实时 star 覆盖索引快照值（快照是 2，GitHub 返回 5）
+    assert result["plugins"][0]["stars"] == 5
+    assert mirrors.github_calls == 1
+
+    # 第二次加载命中 1h 缓存，不再打 GitHub，仍返回缓存值
+    result2 = await marketplace.list_plugins()
+    assert result2["plugins"][0]["stars"] == 5
+    assert mirrors.github_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_marketplace_stars_fall_back_to_snapshot_when_github_unreachable():
+    from src.plugin_host.marketplace import _STARS_CACHE
+    _STARS_CACHE.clear()
+    mirrors = StarMirrors([_star_raw_item(stars=2)], star_count=None)
+    marketplace = PluginMarketplace(mirrors)
+
+    result = await marketplace.list_plugins()
+    assert result["ok"] is True
+    # GitHub 拉取失败，回退索引快照值
+    assert result["plugins"][0]["stars"] == 2
+
+
+@pytest.mark.asyncio
+async def test_marketplace_stars_skip_non_github_repo():
+    from src.plugin_host.marketplace import _STARS_CACHE
+    _STARS_CACHE.clear()
+    mirrors = StarMirrors([_star_raw_item(repository_url="https://gitee.com/example/demo", stars=3)], star_count=5)
+    marketplace = PluginMarketplace(mirrors)
+
+    result = await marketplace.list_plugins()
+    assert result["ok"] is True
+    # 非 GitHub 仓库跳过实时拉取，保留快照值，不打 GitHub
+    assert result["plugins"][0]["stars"] == 3
+    assert mirrors.github_calls == 0
