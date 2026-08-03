@@ -632,6 +632,8 @@ def _extract_tavern_fields(data: dict) -> dict:
         "personality": str(inner.get("personality", "") or "").strip(),
         "scenario": str(inner.get("scenario", "") or "").strip(),
         "first_mes": str(inner.get("first_mes", "") or "").strip(),
+        "system_prompt": str(inner.get("system_prompt", "") or "").strip(),
+        "post_history_instructions": str(inner.get("post_history_instructions", "") or "").strip(),
         "tags": [],
         "character_book": [],
         "creator": str(inner.get("creator", "") or "").strip(),

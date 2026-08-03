@@ -457,6 +457,38 @@ async def api_export_game(request: web.Request) -> web.Response:
     )
 
 
+async def api_import_game(request: web.Request) -> web.Response:
+    """导入存档 zip 为新对局（owner 级操作，需确认头）。"""
+    denied = _require_confirmed_request(request)
+    if denied is not None:
+        return denied
+    api = _get_api(request)
+    if request.content_type != "multipart/form-data":
+        return web.json_response({"ok": False, "error": "存档导入需要 multipart/form-data"}, status=400)
+    if request.content_length and request.content_length > 50 * 1024 * 1024:
+        return web.json_response({"ok": False, "error": "存档包不能超过 50 MB"}, status=413)
+    try:
+        reader = await request.multipart()
+        payload = b""
+        async for part in reader:
+            if part.name not in {"file", "save"}:
+                continue
+            chunks: list[bytes] = []
+            while True:
+                chunk = await part.read_chunk()
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            payload = b"".join(chunks)
+        if not payload:
+            return web.json_response({"ok": False, "error": "缺少存档 zip 文件"}, status=400)
+        result = await request.app["subsystems"].registry.import_save_zip(payload)
+    except Exception as exc:
+        logger.exception("导入存档失败")
+        return web.json_response({"ok": False, "error": f"导入存档失败：{exc}"}, status=400)
+    return web.json_response(result, status=200 if result.get("ok") else 400)
+
+
 async def api_char_update(request: web.Request) -> web.Response:
     gk = request.match_info["game_key"]
     uid = request.match_info["user_id"]
@@ -690,6 +722,7 @@ async def api_delete_game(request: web.Request) -> web.Response:
 
 def register_games(app: web.Application) -> None:
     app.router.add_get("/api/games", api_games)
+    app.router.add_post("/api/games/import", api_import_game)
     app.router.add_get("/api/games/{game_key}", api_detail)
     app.router.add_post("/api/games/{game_key}/claim-gm", api_claim_gm_session)
     app.router.add_get("/api/games/{game_key}/multiplayer", api_multiplayer_status)

@@ -259,6 +259,7 @@ async function onImportTavern(e: Event) {
     } else {
       toast.success(t('importedCharacter', { name: r.card?.character_name || file.name }))
     }
+    if (r.nsfw_warning) toast.warning(t('tavernImportNsfwWarning'))
     await load()
   } catch (err: unknown) { toast.error(errorMessage(err)) } finally { busy.value = false; input.value = '' }
 }

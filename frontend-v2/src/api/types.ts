@@ -312,6 +312,7 @@ export interface CharacterImportResponse {
   npc_name?: string
   world_id?: string
   lorebook_entries?: number
+  nsfw_warning?: boolean
 }
 
 export interface RuleAttribute {

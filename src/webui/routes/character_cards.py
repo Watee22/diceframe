@@ -45,6 +45,19 @@ async def api_character_card_import(request: web.Request) -> web.Response:
     ))
 
 
+async def api_character_card_export(request: web.Request) -> web.Response:
+    body = await request.json()
+    result = _get_api(request).export_character_cards(body.get("card_ids") or [])
+    if not result.get("ok"):
+        return web.json_response(result, status=400)
+    filename = str(result.get("filename") or "characters.json")
+    return web.Response(
+        body=result["payload"],
+        content_type=result.get("content_type", "application/json"),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def register_character_cards(app: web.Application) -> None:
     app.router.add_get("/api/character-cards", api_character_cards)
     app.router.add_get("/api/games/{game_key}/character-cards", api_game_character_cards)
@@ -52,3 +65,4 @@ def register_character_cards(app: web.Application) -> None:
     app.router.add_route("PUT", "/api/character-cards/{card_id}", api_character_card_update)
     app.router.add_route("DELETE", "/api/character-cards/{card_id}", api_character_card_delete)
     app.router.add_post("/api/character-cards/import", api_character_card_import)
+    app.router.add_post("/api/character-cards/export", api_character_card_export)

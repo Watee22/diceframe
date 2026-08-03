@@ -391,6 +391,9 @@ class WebAPI:
                                     target: str = "character_card", world_id: str = "") -> dict[str, Any]:
         return await character_cards.import_character_card(self, file_data, file_name, target, world_id)
 
+    def export_character_cards(self, card_ids: list[str]) -> dict[str, Any]:
+        return character_cards.export_character_cards(self, card_ids)
+
     # ---- 世界编辑器 ----
 
     def list_worlds(self) -> dict[str, Any]:

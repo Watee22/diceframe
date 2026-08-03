@@ -780,6 +780,7 @@ export const zhCN = {
   tavernImportNoWorlds: '暂无世界，请先在世界书页创建。',
   tavernImportPickWorld: '请选择目标世界',
   importedTavernNpc: '已将 {name} 导入为 NPC（世界 {world}，含 {count} 条世界书）',
+  tavernImportNsfwWarning: '该酒馆卡含成人内容标记（NSFW/18+），导入后请自行评估内容是否适合你的跑团场合。',
   chooseFile: '选择文件',
   editCard: '编辑卡片',
   noSharedCards: '暂无共享卡。',

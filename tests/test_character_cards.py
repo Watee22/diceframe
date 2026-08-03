@@ -71,3 +71,37 @@ def test_import_tavern_as_npc_requires_world(tmp_path):
         assert _import_tavern_as_npc(api, {"name": "X"}, "no-such-world")["ok"] is False
     finally:
         store.close()
+
+
+def test_import_tavern_carries_play_directives_and_nsfw_warning(tmp_path):
+    """system_prompt / post_history_instructions 进 NPC content；NSFW 卡返回标记。"""
+    from src.webui.services.character_cards import _tavern_has_nsfw
+    store = LorebookStore(tmp_path / "lore.db")
+    store.open()
+    try:
+        store.create_world("w1", "测试世界", description="", language="zh-CN")
+        tavern = {
+            "name": "Sucrose",
+            "description": "一位生物炼金术士",
+            "personality": "社恐、好奇、笨拙",
+            "scenario": "森林偶遇",
+            "first_mes": "啊、啊啦…",
+            "system_prompt": "短句；只写角色行为，不写玩家的动作。",
+            "post_history_instructions": "耳朵被提及时会慌乱地躲起来。",
+            "tags": ["Game Characters", "Female", "Cute"],
+            "character_book": None,
+        }
+        result = _import_tavern_as_npc(_Api(store), tavern, "w1")
+        assert result["ok"] is True
+        assert "nsfw_warning" not in result  # 无 NSFW 标记，不给警告
+
+        npc = store.get_entry("w1_tavern_Sucrose")
+        assert npc is not None
+        assert "扮演指令: 短句；只写角色行为，不写玩家的动作。" in npc["content"]
+        assert "后续指令: 耳朵被提及时会慌乱地躲起来。" in npc["content"]
+
+        # NSFW 标记 -> 返回 True（中英文标记都覆盖）
+        assert _tavern_has_nsfw({**tavern, "tags": ["NSFW", "Submissive"]}) is True
+        assert _tavern_has_nsfw(tavern) is False
+    finally:
+        store.close()

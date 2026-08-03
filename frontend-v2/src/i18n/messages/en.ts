@@ -780,6 +780,7 @@ export const en = {
   tavernImportNoWorlds: 'No worlds yet—create one in the Lorebook page first.',
   tavernImportPickWorld: 'Please pick a target world',
   importedTavernNpc: 'Imported {name} as NPC (world {world}, {count} lorebook entries)',
+  tavernImportNsfwWarning: 'This tavern card carries adult content markers (NSFW/18+). After importing, please judge for yourself whether it suits your tabletop setting.',
   chooseFile: 'Choose file',
   editCard: 'Edit Card',
   noSharedCards: 'No shared cards yet.',

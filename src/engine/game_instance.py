@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
+import time
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -1466,6 +1469,47 @@ class GameRegistry:
 
         logger.info("存档恢复完成: %d 个对局", len(recovered))
         return recovered
+
+    async def import_save_zip(self, payload: bytes, *, platform: str = "web", account_id: str = "web_bot") -> dict:
+        """导入导出的存档 zip（state.json + 可选 chatlog.jsonl），作为新对局恢复。
+
+        自动生成唯一新 game_key（platform#import_时间戳#account），不覆盖现有对局；
+        chatlog.jsonl 会通过 load 合并回 log。安全校验：仅接受 state.json，防路径穿越。
+        """
+        try:
+            with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+                names = set(zf.namelist())
+                if "state.json" not in names:
+                    return {"ok": False, "error": "存档包缺少 state.json"}
+                state_data = zf.read("state.json")
+                try:
+                    state_json = json.loads(state_data.decode("utf-8-sig"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    return {"ok": False, "error": "state.json 不是有效 JSON"}
+                if not isinstance(state_json, dict) or "game_key" not in state_json:
+                    return {"ok": False, "error": "state.json 缺少 game_key"}
+                # 仅接受顶层已知文件，防止解压路径穿越/任意写入
+                allowed = {"state.json", "chatlog.jsonl"}
+                if any(name for name in names if name not in allowed or "/" in name or "\\" in name or ".." in name):
+                    return {"ok": False, "error": "存档包包含非法文件"}
+        except zipfile.BadZipFile:
+            return {"ok": False, "error": "存档包不是有效的 zip"}
+        except Exception as exc:
+            logger.exception("导入存档解析失败")
+            return {"ok": False, "error": f"存档包解析失败：{exc}"}
+
+        # 生成唯一新 game_key：import_<毫秒时间戳>
+        new_key = (platform, f"import_{int(time.time() * 1000)}", account_id)
+        sp = self._save_path(new_key)
+        sp.parent.mkdir(parents=True, exist_ok=True)
+        sp.write_bytes(state_data)
+        if "chatlog.jsonl" in names:
+            with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+                chatlog_data = zf.read("chatlog.jsonl")
+            if chatlog_data:
+                sp.with_name("chatlog.jsonl").write_bytes(chatlog_data)
+        logger.info("已导入存档为新对局: %s", sp.parent.name)
+        return {"ok": True, "game_key": sp.parent.name}
 
     async def save_all_active(self) -> None:
         for instance in self.list_active():

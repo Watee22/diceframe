@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import base64
 import copy
+import io
 import json
 import logging
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -172,6 +174,12 @@ def _tavern_to_character_card(tavern: dict, file_name: str = "") -> dict[str, An
         value = (tavern.get(key) or "").strip()
         if value:
             background_parts.append(f"{label}: {value}")
+    # 酒馆卡的扮演指令：system_prompt / post_history_instructions 一并带进 background，
+    # AI 扮演该角色时能读到行为约束（game_lifecycle 会把 background 送进 prompt）。
+    for label, key in (("扮演指令", "system_prompt"), ("后续指令", "post_history_instructions")):
+        value = (tavern.get(key) or "").strip()
+        if value:
+            background_parts.append(f"{label}: {value}")
     source = f"SillyTavern: {file_name}" if file_name else "SillyTavern"
     if tavern.get("character_book"):
         source += f"（含 {len(tavern['character_book'])} 条角色世界书）"
@@ -190,6 +198,23 @@ def _tavern_to_character_card(tavern: dict, file_name: str = "") -> dict[str, An
         "rule_id": "",
         "raw_sillytavern": tavern,
     }
+
+
+_NSFW_MARKERS = ("nsfw", "18+", "成人", "explicit", "lewd", "porn", "erotic", "submissive", "dominant", "bdsm", "sensual", "intimate")
+
+
+def _tavern_has_nsfw(tavern: dict) -> bool:
+    """检测酒馆卡是否带成人内容标记（NSFW/18+）。返回布尔，文案由前端 i18n 按语言显示。"""
+    haystack_parts: list[str] = []
+    tags = tavern.get("tags")
+    if isinstance(tags, list):
+        haystack_parts.extend(str(t).lower() for t in tags if str(t).strip())
+    for key in ("system_prompt", "post_history_instructions", "description"):
+        value = str(tavern.get(key) or "").strip()
+        if value:
+            haystack_parts.append(value.lower())
+    haystack = " ".join(haystack_parts)
+    return any(marker in haystack for marker in _NSFW_MARKERS)
 
 
 def _import_tavern_as_npc(api: "WebAPI", tavern: dict, world_id: str) -> dict[str, Any]:
@@ -212,6 +237,12 @@ def _import_tavern_as_npc(api: "WebAPI", tavern: dict, world_id: str) -> dict[st
     content_parts: list[str] = []
     for label, key in (("描述", "description"), ("性格", "personality"),
                        ("背景", "scenario"), ("初次见面", "first_mes")):
+        value = str(tavern.get(key) or "").strip()
+        if value:
+            content_parts.append(f"{label}: {value}")
+    # 酒馆卡的扮演指令：system_prompt / post_history_instructions 一并进 content，
+    # AI 扮演该 NPC 时能读到行为约束（世界书条目 content 会进 lorebook_matches）。
+    for label, key in (("扮演指令", "system_prompt"), ("后续指令", "post_history_instructions")):
         value = str(tavern.get(key) or "").strip()
         if value:
             content_parts.append(f"{label}: {value}")
@@ -252,7 +283,26 @@ def _import_tavern_as_npc(api: "WebAPI", tavern: dict, world_id: str) -> dict[st
             book_imported += 1
     api._rebuild_lorebook_index(world_id)
     logger.info("酒馆卡已导入为 NPC: %s -> world=%s（含 %d 条世界书）", name, world_id, book_imported)
-    return {"ok": True, "imported_as": "npc", "npc_name": name, "world_id": world_id, "lorebook_entries": book_imported}
+    result: dict[str, Any] = {"ok": True, "imported_as": "npc", "npc_name": name, "world_id": world_id, "lorebook_entries": book_imported}
+    if _tavern_has_nsfw(tavern):
+        result["nsfw_warning"] = True
+    return result
+
+
+def _is_diceframe_card(data: dict) -> bool:
+    """判断 JSON 是否为 DiceFrame 自家角色卡格式（vs 酒馆 chara_card 格式）。
+
+    DiceFrame 卡特征：顶层有 schema_version + 至少一个 TRPG 特有字段
+    （attributes / skills / rule_id / mechanics）。酒馆卡是 {data: {...}} 包裹
+    或含 description/personality 的纯酒馆结构，不带这些字段。
+    """
+    if not isinstance(data, dict):
+        return False
+    if "data" in data and isinstance(data["data"], dict):
+        return False  # chara_card_v2 用 data 包裹，是酒馆格式
+    if int(data.get("schema_version") or 0) != 2:
+        return False
+    return any(key in data for key in ("attributes", "skills", "rule_id", "mechanics", "equipment", "inventory"))
 
 
 async def import_character_card(api: "WebAPI", file_data: str = "", file_name: str = "card.json",
@@ -261,6 +311,22 @@ async def import_character_card(api: "WebAPI", file_data: str = "", file_name: s
         return {"ok": False, "error": "未提供文件数据"}
     raw_bytes = base64.b64decode(file_data)
     safe_name = Path(file_name).name or "card.json"
+
+    # DiceFrame 自家卡格式：原样存入卡库（无损），不转酒馆字段
+    try:
+        as_json = json.loads(raw_bytes.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        as_json = None
+    if as_json is not None and _is_diceframe_card(as_json):
+        if target == "npc":
+            return {"ok": False, "error": "DiceFrame 角色卡不支持导入为 NPC，请选择「导入为角色卡」"}
+        card = dict(as_json)
+        card.setdefault("character_name", card.get("character_name") or card.get("name") or "未命名")
+        cards = _read_cards(api)
+        cards.append(card)
+        _write_cards(api, cards)
+        return {"ok": True, "card": card, "imported_as": "character_card", "format": "diceframe"}
+
     tmp_path = Path(tempfile.gettempdir()) / f"trpg_card_import_{int(time.time_ns())}_{safe_name}"
     tmp_path.write_bytes(raw_bytes)
     try:
@@ -278,4 +344,42 @@ async def import_character_card(api: "WebAPI", file_data: str = "", file_name: s
     cards = _read_cards(api)
     cards.append(card)
     _write_cards(api, cards)
-    return {"ok": True, "card": card, "imported_as": "character_card"}
+    result: dict[str, Any] = {"ok": True, "card": card, "imported_as": "character_card", "format": "tavern"}
+    if _tavern_has_nsfw(tavern):
+        result["nsfw_warning"] = True
+    return result
+
+
+def export_character_cards(api: "WebAPI", card_ids: list[str]) -> dict[str, Any]:
+    """批量导出 DiceFrame 角色卡：单张返回 JSON 文本，多张打包 zip。
+
+    导出的是 DiceFrame 自家格式（含 attributes/skills/rule_id 等），
+    与原样导入接口无损往返；不转酒馆格式。
+    """
+    card_ids = [str(c).strip() for c in card_ids if str(c).strip()] if isinstance(card_ids, list) else []
+    if not card_ids:
+        return {"ok": False, "error": "请选择要导出的角色卡"}
+    cards = _read_cards(api)
+    selected = [c for c in cards if str(c.get("id") or "") in set(card_ids)]
+    if not selected:
+        return {"ok": False, "error": "未找到所选角色卡"}
+
+    # 导出时去掉运行期来源标记，保留业务字段
+    skip = {"source", "source_plugin", "plugin_content_id", "raw_sillytavern"}
+    payloads: list[tuple[str, str]] = []
+    for card in selected:
+        clean = {k: v for k, v in card.items() if k not in skip}
+        name = str(clean.get("character_name") or clean.get("name") or "角色卡")
+        safe = "".join(ch for ch in name if ch.isalnum() or ch in "-_ ").strip() or "character"
+        payloads.append((f"{safe}.json", json.dumps(clean, ensure_ascii=False, indent=2)))
+
+    if len(payloads) == 1:
+        filename, content = payloads[0]
+        return {"ok": True, "filename": filename, "content_type": "application/json", "payload": content.encode("utf-8")}
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in payloads:
+            zf.writestr(name, content)
+    return {"ok": True, "filename": "characters_export.zip", "content_type": "application/zip", "payload": buffer.getvalue()}
+
