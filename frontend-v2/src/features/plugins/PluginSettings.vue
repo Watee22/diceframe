@@ -451,6 +451,7 @@ onMounted(async () => {
           {{ t('createContentPack') }}
         </NButton>
       </section>
+      <p class="muted content-auto-import-hint">{{ t('contentAutoImportHint') }}</p>
       <NSpin :show="contentLoading">
         <p v-if="!contentByPlugin.length" class="muted">{{ t('noPluginsAvailable') }}</p>
         <NCollapse v-else class="content-collapse">

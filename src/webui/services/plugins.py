@@ -97,13 +97,43 @@ def cleanup_plugin_lorebook(api: "WebAPI", plugin_id: str) -> dict[str, Any]:
         logger.warning("插件卡库清理失败，已跳过: %s", plugin_id, exc_info=True)
     return result
 
+def _autoimport_plugin_content(api: "WebAPI", plugin_id: str) -> None:
+    """启用内容包时自动灌注全部内容资源，幂等：已存在则跳过，不重复创建。
+
+    角色模板 -> 卡库（全局）；NPC/道具/法术/职业 -> 插件自己的世界（world_template
+    的世界，sync 时已建好）。无 world_template 时只导角色模板。失败记日志不阻断启用。
+    """
+    if not api._plugins:
+        return
+    target_world = ""
+    for item in api._plugins.contributions.list("world_template"):
+        if item.plugin_id == plugin_id and item.key:
+            target_world = str(item.key)
+            break
+    resources = api._plugins.list_content_resources()
+    for kind in ("character_template", "npc", "item", "spell", "class"):
+        for resource in resources.get(kind, []):
+            if str(resource.get("plugin_id") or "") != plugin_id:
+                continue
+            try:
+                if kind == "character_template":
+                    api.save_character_card(_content_to_character_card(resource))
+                elif target_world and api._lore and api._lore.get_world(target_world):
+                    entry = _content_to_lore_entry(resource, kind, target_world)
+                    if not api._lore.get_entry(entry["id"]):
+                        api.save_entry(entry)
+            except Exception:
+                logger.warning("自动灌注插件 %s 内容失败（%s）", plugin_id, kind, exc_info=True)
+
+
 async def update_plugin_config(api: "WebAPI", plugin_id: str, changes: dict[str, Any]) -> dict[str, Any]:
     if not api._plugins: return {"ok": False, "error": "插件宿主未启用"}
     result = await api._plugins.update_config(plugin_id, changes)
     # update_config 失败会抛异常，能走到这行即成功；public_detail 不含 ok，故不再判断 result.get("ok")。
-    # 启用内容包/主题时立即同步其世界书，避免用户还得先开世界书页才看到条目。
+    # 启用内容包/主题时立即同步世界书 + 自动灌注全部内容资源，避免用户还得手动一键导入。
     if changes.get("enabled") is True:
         sync_plugin_lorebooks(api)
+        _autoimport_plugin_content(api, plugin_id)
     return {"ok": True, **result}
 
 async def control_plugin(api: "WebAPI", plugin_id: str, action: str) -> dict[str, Any]:
@@ -335,8 +365,11 @@ def import_all_plugin_content(
                         return {"ok": False, "error": "目标世界书不存在"}
                     entry = _content_to_lore_entry(resource, kind, target_world_id)
                     if api._lore.get_entry(entry["id"]):
-                        entry["id"] = f"{entry['id']}_{int(time.time() * 1000)}"
-                    result = api.save_entry(entry)
+                        # 幂等：已存在则更新，不创建时间戳副本（避免重复导入产生重复条目）
+                        api._lore.update_entry(entry["id"], entry)
+                        result = {"ok": True}
+                    else:
+                        result = api.save_entry(entry)
                     if result.get("ok"):
                         imported.append({"kind": kind, "name": _content_name(resource), "as": "lorebook_entry"})
                     else:

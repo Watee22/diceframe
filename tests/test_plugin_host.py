@@ -538,6 +538,110 @@ def test_list_plugin_types_drives_frontend_filters():
     }
 
 
+def test_autoimport_plugin_content_idempotent():
+    """启用内容包自动灌注：角色模板->卡库，npc/spell->插件世界；重复调用条目不复制。"""
+    from src.webui.services.plugins import _autoimport_plugin_content
+
+    saved_cards: list = []
+    saved_entries: list = []
+
+    class _Contrib:
+        def __init__(self, plugin_id, key):
+            self.plugin_id = plugin_id
+            self.key = key
+
+    class _ContribRegistry:
+        def __init__(self, items):
+            self._items = items
+        def list(self, kind):
+            return self._items
+
+    class _Plugins:
+        def __init__(self, contribs):
+            self.contributions = _ContribRegistry(contribs)
+        def list_content_resources(self):
+            return {
+                "character_template": [{"plugin_id": "pack", "id": "hero", "character_name": "Hero", "plugin_name": "pack"}],
+                "npc": [{"plugin_id": "pack", "id": "himmel", "name": "Himmel", "description": "hero"}],
+                "spell": [{"plugin_id": "pack", "id": "zoltraak", "name": "Zoltraak", "description": "spell"}],
+                "item": [], "class": [],
+            }
+
+    class _Lore:
+        def __init__(self):
+            self.entries: dict = {}
+        def get_world(self, wid):
+            return wid == "w1"
+        def get_entry(self, eid):
+            return self.entries.get(eid)
+        def update_entry(self, eid, entry):
+            self.entries[eid] = entry
+
+    lore = _Lore()
+
+    class _Api:
+        def __init__(self, plugins):
+            self._plugins = plugins
+            self._lore = lore
+        def save_character_card(self, card):
+            saved_cards.append(card)
+            return {"ok": True}
+        def save_entry(self, entry):
+            lore.entries[entry["id"]] = entry
+            saved_entries.append(entry)
+            return {"ok": True}
+
+    api = _Api(_Plugins([_Contrib("pack", "w1")]))
+    _autoimport_plugin_content(api, "pack")
+
+    assert len(saved_cards) == 1
+    assert saved_cards[0]["character_name"] == "Hero"
+    assert len(saved_entries) == 2
+    assert all(e["world_id"] == "w1" for e in saved_entries)
+    assert all(e["source_plugin"] == "pack" for e in saved_entries)
+    assert any("npc" in e["id"] for e in saved_entries)
+    assert any("spell" in e["id"] for e in saved_entries)
+
+    # 幂等：再调一次，已存在的世界书条目跳过（不复制）
+    _autoimport_plugin_content(api, "pack")
+    assert len(saved_entries) == 2
+
+
+def test_autoimport_plugin_content_without_world_only_imports_cards():
+    """无 world_template 时：只导角色模板，npc/spell 跳过（无自然归属世界）。"""
+    from src.webui.services.plugins import _autoimport_plugin_content
+
+    saved_cards: list = []
+    saved_entries: list = []
+
+    class _ContribRegistry:
+        def list(self, kind):
+            return []
+
+    class _Plugins:
+        contributions = _ContribRegistry()
+        def list_content_resources(self):
+            return {
+                "character_template": [{"plugin_id": "pack", "id": "hero", "character_name": "Hero", "plugin_name": "pack"}],
+                "npc": [{"plugin_id": "pack", "id": "himmel", "name": "Himmel", "description": "hero"}],
+                "spell": [], "item": [], "class": [],
+            }
+
+    class _Api:
+        _plugins = _Plugins()
+        _lore = None
+        def save_character_card(self, card):
+            saved_cards.append(card)
+            return {"ok": True}
+        def save_entry(self, entry):
+            saved_entries.append(entry)
+            return {"ok": True}
+
+    _autoimport_plugin_content(_Api(), "pack")
+    assert len(saved_cards) == 1
+    assert len(saved_entries) == 0  # 无世界，npc 跳过
+
+
 def test_invalid_manifest_isolated_from_other_plugins(tmp_path):
     plugins = tmp_path / "plugins"
     write_plugin(plugins, "good")

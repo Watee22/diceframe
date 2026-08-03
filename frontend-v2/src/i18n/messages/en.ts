@@ -579,6 +579,7 @@ export const en = {
   importedCharacterLibrary: 'Imported to character library',
   importedLorebook: 'Imported to lorebook',
   importAllContent: 'Import all',
+  contentAutoImportHint: 'Enabling a content pack auto-imports all its content into its own world and the card library; here you can manually import into another world.',
   importedAllCount: 'Imported {imported} items ({errors} failed)',
   contentItems: 'items',
   pluginsInstalledTab: 'Installed',

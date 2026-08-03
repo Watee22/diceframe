@@ -579,6 +579,7 @@ export const zhCN = {
   importedCharacterLibrary: '已导入角色卡库',
   importedLorebook: '已导入世界书',
   importAllContent: '一键导入全部',
+  contentAutoImportHint: '启用内容包时已自动把全部内容导入到其自身世界与角色卡库；这里可手动导入到其他世界。',
   importedAllCount: '已导入 {imported} 项（失败 {errors}）',
   contentItems: '项',
   pluginsInstalledTab: '已安装',
