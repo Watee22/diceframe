@@ -26,16 +26,18 @@ from .support import plugin_type_support
 
 logger = logging.getLogger("trpg")
 
-# GitHub star 实时缓存：{repo_key: (拉取时间戳, star 数)}，1 小时 TTL
-_STARS_CACHE: dict[str, tuple[float, int]] = {}
+# GitHub star 实时缓存：{repo_key: (时间戳, star 数或 None)}；成功 1h TTL，失败也负缓存避免反复重试
+_STARS_CACHE: dict[str, tuple[float, int | None]] = {}
 _STARS_TTL_SECONDS = 3600
+_STARS_FETCH_TIMEOUT = 4.0
 
 
 async def _fetch_github_stars(mirrors: MirrorManager, repository_url: str) -> int | None:
-    """实时拉取 GitHub stargazers_count，带 1 小时内存缓存。
+    """实时拉取 GitHub stargazers_count，带缓存。
 
     star 是动态数据，不该当审核快照存；改为后端按 repository_url 实时拉取。
-    拉取失败（GFW / 限流 / 无效或非 GitHub 仓库）返回 None，调用方回退到索引快照值。
+    拉取失败（GFW / 限流 / 无效或非 GitHub 仓库 / 超时）返回 None，调用方回退
+    到索引快照值；失败结果也负缓存，避免进商店时反复卡在超时上。
     """
     cache_key = ""
     try:
@@ -45,16 +47,22 @@ async def _fetch_github_stars(mirrors: MirrorManager, repository_url: str) -> in
         cached = _STARS_CACHE.get(cache_key)
         if cached and now - cached[0] < _STARS_TTL_SECONDS:
             return cached[1]
-        result = await mirrors.fetch_github_api(
-            f"/repos/{quote(owner)}/{quote(repo)}", official_first=True,
+        result = await asyncio.wait_for(
+            mirrors.fetch_github_api(
+                f"/repos/{quote(owner)}/{quote(repo)}", official_first=True,
+            ),
+            timeout=_STARS_FETCH_TIMEOUT,
         )
         if not result.ok or not isinstance(result.data, str):
+            _STARS_CACHE[cache_key] = (now, None)
             return None
         stars = int(json.loads(result.data).get("stargazers_count") or 0)
         _STARS_CACHE[cache_key] = (now, stars)
         return stars
     except Exception:
         logger.debug("GitHub star 拉取失败: %s", cache_key, exc_info=True)
+        if cache_key:
+            _STARS_CACHE[cache_key] = (time.time(), None)
         return None
 
 @dataclass(frozen=True)
