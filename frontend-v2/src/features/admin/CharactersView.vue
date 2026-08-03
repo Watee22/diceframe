@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { api } from '@/api/client'
+import { api, apiBlob } from '@/api/client'
 import type { CharacterCard, CharacterCardsResponse, CharacterItem, CharacterListResponse, CharacterPortrait, CharacterSchemaResponse, CharacterSheet, CharacterSkill, JsonObject, RuleMeta, RulesResponse, RuleSummary, SkillSpec, WorldListResponse, WorldSummary } from '@/api/types'
 import { readCurrentGame } from '@/stores/gameContext'
 import { importTavernCard } from '@/utils/characterImport'
@@ -208,6 +208,7 @@ async function load() {
 }
 const route = useRoute()
 const tavernInput = ref<HTMLInputElement | null>(null)
+const diceframeInput = ref<HTMLInputElement | null>(null)
 const tavernImportOpen = ref(false)
 const tavernTarget = ref<'npc' | 'character_card'>('npc')
 const tavernWorlds = ref<WorldSummary[]>([])
@@ -234,6 +235,57 @@ function confirmTavernChoice() {
   }
   tavernImportOpen.value = false
   tavernInput.value?.click()
+}
+
+async function onImportDiceframe(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  busy.value = true
+  try {
+    const r = await importTavernCard(file, { target: 'character_card' })
+    toast.success(t('importedCharacter', { name: r.card?.character_name || file.name }))
+    if (r.nsfw_warning) toast.warning(t('tavernImportNsfwWarning'))
+    await load()
+  } catch (err: unknown) { toast.error(errorMessage(err)) } finally { busy.value = false; input.value = '' }
+}
+
+const selectedCardIds = ref<Set<string>>(new Set())
+
+function toggleCardSelect(id: string) {
+  const next = new Set(selectedCardIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedCardIds.value = next
+}
+
+async function exportCards(ids: string[]) {
+  if (!ids.length) return
+  try {
+    const res = await apiBlob('/character-cards/export', {
+      method: 'POST',
+      body: JSON.stringify({ card_ids: ids }),
+    })
+    const blob = await res.blob()
+    const dispo = res.headers.get('Content-Disposition') || ''
+    const m = dispo.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
+    const filename = m ? decodeURIComponent(m[1]) : 'characters.json'
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success(t('exportedCards'))
+  } catch (err: unknown) { toast.error(errorMessage(err)) }
+}
+
+async function exportSingleCard(card: CharacterCard) {
+  await exportCards([cardId(card)])
+}
+
+async function exportSelected() {
+  await exportCards([...selectedCardIds.value])
 }
 
 onMounted(async () => {
@@ -510,8 +562,9 @@ async function onWizardSubmit(c: CharacterSheet & { character_name: string }) {
       </article>
     </div>
 
-    <h2 class="field-group" style="display:flex;align-items:center;justify-content:space-between"><span>{{ t('sharedCharacterLibrary') }}</span><button class="primary" :disabled="busy" @click="openTavernImport">{{ t('importTavernCard') }}</button></h2>
+    <h2 class="field-group" style="display:flex;align-items:center;justify-content:space-between"><span>{{ t('sharedCharacterLibrary') }}</span><span class="actions"><button class="primary" :disabled="busy || !selectedCardIds.size" @click="exportSelected">{{ t('exportSelected') }}</button><button class="primary" :disabled="busy" @click="diceframeInput?.click()">{{ t('importDiceframeCard') }}</button><button :disabled="busy" @click="openTavernImport">{{ t('importTavernCard') }}</button></span></h2>
     <input ref="tavernInput" type="file" accept=".json,application/json" @change="onImportTavern" hidden>
+    <input ref="diceframeInput" type="file" accept=".json,application/json" @change="onImportDiceframe" hidden>
     <Modal v-if="tavernImportOpen" :title="t('importTavernCard')" @close="tavernImportOpen = false">
       <label>{{ t('tavernImportAs') }}</label>
       <div class="check-row">
@@ -534,6 +587,7 @@ async function onWizardSubmit(c: CharacterSheet & { character_name: string }) {
     <div class="card-grid">
       <article v-for="c in data?.cards || []" :key="c.card_id || c.id" class="char-card">
         <div class="character-card-summary">
+          <input type="checkbox" :checked="selectedCardIds.has(cardId(c))" @change="toggleCardSelect(cardId(c))" class="card-select" :title="t('selectCard')">
           <PortraitImage :portrait="c.portrait" :rule-id="c.rule_id" :seed="cardId(c) || c.character_name" :name="c.character_name" :size="56" />
           <div>
           <h2>{{ c.character_name }}</h2>
@@ -545,6 +599,7 @@ async function onWizardSubmit(c: CharacterSheet & { character_name: string }) {
           </div>
         </div>
         <div class="actions">
+          <button @click="exportSingleCard(c)">{{ t('export') }}</button>
           <button @click="openCardEdit(c)">{{ t('editCard') }}</button>
           <button class="danger" @click="deleteCard(c)">{{ t('delete') }}</button>
         </div>

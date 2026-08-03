@@ -80,6 +80,26 @@ async function exportAll() {
   toast.success(t('exportDone'))
 }
 
+const saveImportInput = ref<HTMLInputElement | null>(null)
+
+async function onImportSave(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  busy.value = true
+  try {
+    const form = new FormData()
+    form.append('file', file)
+    const r = await api<{ ok?: boolean; game_key?: string; error?: string }>('/games/import', {
+      method: 'POST',
+      body: form,
+    })
+    if (!r.ok) throw new Error(r.error || t('importFailed'))
+    toast.success(t('saveImported', { name: r.game_key || '' }))
+    await load()
+  } catch (e: unknown) { setError(e) } finally { busy.value = false; input.value = '' }
+}
+
 async function resetGame(key: string) {
   const ok = await confirm({ title: t('resetTitle'), content: t('resetContent'), positiveText: t('resetTitle'), type: 'warning' })
   if (!ok) return
@@ -156,6 +176,8 @@ onMounted(load)
         <button v-if="games.length" @click="selectAll">{{ t('selectAll') }}</button>
         <button v-if="games.length" @click="selectInvert">{{ t('invertSelection') }}</button>
         <button v-if="games.length" @click="exportAll" :disabled="busy">{{ t('exportAll') }}</button>
+        <button @click="saveImportInput?.click()" :disabled="busy">{{ t('importSave') }}</button>
+        <input ref="saveImportInput" type="file" accept=".zip" @change="onImportSave" hidden>
         <button v-if="selected.length" class="danger" @click="batchRemove" :disabled="busy">{{ t('deleteSelected') }} {{ selected.length }}</button>
         <button class="primary" @click="play('')">{{ t('createAdventure') }}</button>
       </div>

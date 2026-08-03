@@ -300,6 +300,108 @@ class TestGameRegistry:
         with pytest.raises(ValueError):
             reg._save_path(("web", "../../../../outside", "bot"))
 
+    async def test_save_writes_chatlog_and_load_merges(self, tmp_path):
+        """save 把完整 log 增量写进 chatlog.jsonl，load 拼回完整历史（不丢旧 log）。"""
+        import json as _json
+        reg = GameRegistry(tmp_path / "saves")
+        inst = GameInstance(game_key=("web", "room1", "bot"))
+        # 模拟 150 条 log（超过核心态 100 条上限）
+        for i in range(150):
+            inst.log.append({"round": i + 1, "content": f"log-{i + 1}"})
+        await reg.save(inst)
+        chatlog = tmp_path / "saves" / "web#room1#bot" / "chatlog.jsonl"
+        assert chatlog.exists()
+        lines = [l for l in chatlog.read_text(encoding="utf-8").splitlines() if l.strip()]
+        assert len(lines) == 150  # 完整历史
+        # state.json 核心态只留最近 100 条
+        state = _json.loads((tmp_path / "saves" / "web#room1#bot" / "state.json").read_text(encoding="utf-8"))
+        assert len(state["log"]) == 100
+
+        # 重新 load：内存 log 应恢复完整 150 条
+        reg2 = GameRegistry(tmp_path / "saves")
+        restored = await reg2.load(("web", "room1", "bot"))
+        assert restored is not None
+        assert len(restored.log) == 150
+        assert restored.log[0]["round"] == 1  # 最早的在
+        assert restored.log[-1]["round"] == 150  # 最新的在
+
+    async def test_save_appends_incrementally(self, tmp_path):
+        """连续 save 不重复写 chatlog（增量追加）。"""
+        reg = GameRegistry(tmp_path / "saves")
+        inst = GameInstance(game_key=("web", "room2", "bot"))
+        inst.log.append({"round": 1, "content": "a"})
+        await reg.save(inst)
+        inst.log.append({"round": 2, "content": "b"})
+        await reg.save(inst)
+        chatlog = tmp_path / "saves" / "web#room2#bot" / "chatlog.jsonl"
+        lines = [l for l in chatlog.read_text(encoding="utf-8").splitlines() if l.strip()]
+        assert len(lines) == 2  # 不重复
+        assert "round" in lines[0] and "round" in lines[1]
+
+    async def test_old_save_migrates_to_chatlog(self, tmp_path):
+        """老存档（无 chatlog 但有 log）load 时自动迁移到 chatlog。"""
+        import json as _json
+        import os
+        save_dir = tmp_path / "saves"
+        key_dir = save_dir / "web#room3#bot"
+        key_dir.mkdir(parents=True)
+        state = {
+            "game_key": ["web", "room3", "bot"],
+            "world_id": "w1", "world_name": "W", "state": "paused",
+            "players": {}, "npcs": {}, "round_number": 2, "log": [
+                {"round": 1, "content": "old1"}, {"round": 2, "content": "old2"},
+            ],
+            "summary": {}, "key_facts": [],
+        }
+        (key_dir / "state.json").write_text(_json.dumps(state), encoding="utf-8")
+        reg = GameRegistry(save_dir)
+        inst = await reg.load(("web", "room3", "bot"))
+        assert inst is not None
+        assert len(inst.log) == 2
+        # 迁移后 chatlog.jsonl 已生成
+        chatlog = key_dir / "chatlog.jsonl"
+        assert chatlog.exists()
+        lines = [l for l in chatlog.read_text(encoding="utf-8").splitlines() if l.strip()]
+        assert len(lines) == 2
+
+    async def test_import_save_zip_creates_new_game(self, tmp_path):
+        """导入存档 zip 生成新 game_key，不覆盖现有对局。"""
+        import io
+        import zipfile
+        from src.engine.game_instance import GameRegistry
+        reg = GameRegistry(tmp_path / "saves")
+        # 导出一个 zip（含 state.json + chatlog.jsonl）
+        state = {
+            "game_key": ["web", "orig", "bot"],
+            "world_id": "w1", "world_name": "Orig", "state": "paused",
+            "players": {}, "npcs": {}, "round_number": 5, "log": [],
+            "summary": {}, "key_facts": [],
+        }
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as zf:
+            zf.writestr("state.json", __import__("json").dumps(state))
+            zf.writestr("chatlog.jsonl", __import__("json").dumps({"round": 1, "content": "a"}) + "\n")
+        result = await reg.import_save_zip(buffer.getvalue())
+        assert result["ok"] is True
+        new_key = tuple(result["game_key"].split("#"))
+        assert new_key[1] != "orig"  # 自动生成新 game_key
+        # 新存档目录存在
+        assert (tmp_path / "saves" / result["game_key"] / "state.json").exists()
+        # 不覆盖原存档
+        assert not (tmp_path / "saves" / "web#orig#bot").exists()
+
+    async def test_import_save_zip_rejects_missing_state(self, tmp_path):
+        """存档包缺 state.json 报错。"""
+        import io
+        import zipfile
+        from src.engine.game_instance import GameRegistry
+        reg = GameRegistry(tmp_path / "saves")
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as zf:
+            zf.writestr("readme.txt", "hi")
+        result = await reg.import_save_zip(buffer.getvalue())
+        assert result["ok"] is False
+
 
 def test_webapi_parse_key_rejects_path_traversal():
     from src.webui.api import WebAPI
