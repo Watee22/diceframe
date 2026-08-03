@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-import logging
-import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
@@ -23,47 +20,6 @@ from .mirrors import (
 from .package_limits import MAX_PLUGIN_PACKAGE_BYTES
 from .policy import effective_plugin_permissions, plugin_risk_level
 from .support import plugin_type_support
-
-logger = logging.getLogger("trpg")
-
-# GitHub star 实时缓存：{repo_key: (时间戳, star 数或 None)}；成功 1h TTL，失败也负缓存避免反复重试
-_STARS_CACHE: dict[str, tuple[float, int | None]] = {}
-_STARS_TTL_SECONDS = 3600
-_STARS_FETCH_TIMEOUT = 4.0
-
-
-async def _fetch_github_stars(mirrors: MirrorManager, repository_url: str) -> int | None:
-    """实时拉取 GitHub stargazers_count，带缓存。
-
-    star 是动态数据，不该当审核快照存；改为后端按 repository_url 实时拉取。
-    拉取失败（GFW / 限流 / 无效或非 GitHub 仓库 / 超时）返回 None，调用方回退
-    到索引快照值；失败结果也负缓存，避免进商店时反复卡在超时上。
-    """
-    cache_key = ""
-    try:
-        owner, repo = parse_github_repository(repository_url)
-        cache_key = f"{owner}/{repo}"
-        now = time.time()
-        cached = _STARS_CACHE.get(cache_key)
-        if cached and now - cached[0] < _STARS_TTL_SECONDS:
-            return cached[1]
-        result = await asyncio.wait_for(
-            mirrors.fetch_github_api(
-                f"/repos/{quote(owner)}/{quote(repo)}", official_first=True,
-            ),
-            timeout=_STARS_FETCH_TIMEOUT,
-        )
-        if not result.ok or not isinstance(result.data, str):
-            _STARS_CACHE[cache_key] = (now, None)
-            return None
-        stars = int(json.loads(result.data).get("stargazers_count") or 0)
-        _STARS_CACHE[cache_key] = (now, stars)
-        return stars
-    except Exception:
-        logger.debug("GitHub star 拉取失败: %s", cache_key, exc_info=True)
-        if cache_key:
-            _STARS_CACHE[cache_key] = (time.time(), None)
-        return None
 
 @dataclass(frozen=True)
 class MarketplaceSource:
@@ -94,23 +50,9 @@ class PluginMarketplace:
         if not isinstance(raw_items, list):
             return {"ok": False, "error": "插件市场 JSON 必须是数组", "plugins": [], "source": fetched.to_dict()}
         plugins = [item for item in (_normalize_market_item(item) for item in raw_items) if item is not None]
-        # 用 GitHub 实时 star 数覆盖索引快照（失败回退快照值）；并发拉取 + 1h 缓存
-        await asyncio.gather(
-            *(self._populate_live_stars(plugin) for plugin in plugins),
-            return_exceptions=True,
-        )
         source = fetched.to_dict()
         source.pop("data", None)
         return {"ok": True, "plugins": plugins, "total": len(plugins), "source": source}
-
-    async def _populate_live_stars(self, plugin: dict[str, Any]) -> None:
-        """用 GitHub 实时 star 覆盖插件 stars；拉不到则保留索引快照值。"""
-        repo_url = str(plugin.get("repository_url") or "")
-        if not repo_url:
-            return
-        live = await _fetch_github_stars(self.mirrors, repo_url)
-        if live is not None:
-            plugin["stars"] = live
 
     async def resolve_release(self, item: dict[str, Any]) -> dict[str, Any]:
         repository_url = str(item.get("repository_url") or "")
