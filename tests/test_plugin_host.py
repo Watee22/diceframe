@@ -525,6 +525,19 @@ def test_cleanup_removes_cards_saved_through_real_save_path(tmp_path):
     assert list_character_cards(api)["cards"] == []
 
 
+def test_list_plugin_types_drives_frontend_filters():
+    """前端筛选/展示由后端类型表驱动：filterable 类型按 filter_order 升序。"""
+    from src.plugin_host.support import list_plugin_types
+    types = list_plugin_types()
+    filterable = [t["id"] for t in types if t["filterable"]]
+    assert filterable == ["content-pack", "theme", "tool", "channel-adapter", "map-pack"]
+    assert len(types) == 8
+    assert {t["id"] for t in types} == {
+        "channel-adapter", "content-pack", "theme", "map-pack",
+        "import-export", "provider", "tool", "bot-extension",
+    }
+
+
 def test_invalid_manifest_isolated_from_other_plugins(tmp_path):
     plugins = tmp_path / "plugins"
     write_plugin(plugins, "good")

@@ -1,7 +1,7 @@
 """DiceFrame 插件类型 descriptor：单一来源。
 
-每个插件类型的支持级别、运行方式、推断权限、必需权限、内容贡献映射都集中在这里。
-新增插件类型只改本表，宿主/策略/注册表/前端按数据驱动，不再散落硬编码。
+每个插件类型的支持级别、运行方式、推断权限、必需权限、内容贡献映射、是否可筛选
+都集中在这里。新增插件类型只改本表，宿主/策略/注册表/前端按数据驱动，不再散落硬编码。
 """
 
 from __future__ import annotations
@@ -51,6 +51,8 @@ PLUGIN_TYPE_SUPPORT: dict[str, dict[str, Any]] = {
         "inferred_permissions": ["network.client", "diceframe.http"],
         "required_permission": None,
         "contributes": None,
+        "filterable": True,
+        "filter_order": 4,
     },
     "content-pack": {
         "level": "supported",
@@ -59,6 +61,9 @@ PLUGIN_TYPE_SUPPORT: dict[str, dict[str, Any]] = {
         "inferred_permissions": ["content.read", "content.import"],
         "required_permission": None,
         "contributes": _CONTENT_CONTRIBUTIONS,
+        "filterable": True,
+        "filter_order": 1,
+        "cleanup": ["content_data"],
     },
     "theme": {
         "level": "supported",
@@ -67,6 +72,8 @@ PLUGIN_TYPE_SUPPORT: dict[str, dict[str, Any]] = {
         "inferred_permissions": ["theme.tokens"],
         "required_permission": None,
         "contributes": _THEME_CONTRIBUTIONS,
+        "filterable": True,
+        "filter_order": 2,
     },
     "map-pack": {
         "level": "partial",
@@ -75,6 +82,8 @@ PLUGIN_TYPE_SUPPORT: dict[str, dict[str, Any]] = {
         "inferred_permissions": ["map.assets"],
         "required_permission": None,
         "contributes": _MAP_CONTRIBUTIONS,
+        "filterable": True,
+        "filter_order": 5,
     },
     "import-export": {
         "level": "reserved",
@@ -83,6 +92,8 @@ PLUGIN_TYPE_SUPPORT: dict[str, dict[str, Any]] = {
         "inferred_permissions": [],
         "required_permission": None,
         "contributes": None,
+        "filterable": False,
+        "filter_order": 0,
     },
     "provider": {
         "level": "reserved",
@@ -91,6 +102,8 @@ PLUGIN_TYPE_SUPPORT: dict[str, dict[str, Any]] = {
         "inferred_permissions": [],
         "required_permission": None,
         "contributes": None,
+        "filterable": False,
+        "filter_order": 0,
     },
     "tool": {
         "level": "supported",
@@ -99,6 +112,8 @@ PLUGIN_TYPE_SUPPORT: dict[str, dict[str, Any]] = {
         "inferred_permissions": ["tool.execute"],
         "required_permission": "tool.execute",
         "contributes": None,
+        "filterable": True,
+        "filter_order": 3,
     },
     "bot-extension": {
         "level": "supported",
@@ -107,6 +122,8 @@ PLUGIN_TYPE_SUPPORT: dict[str, dict[str, Any]] = {
         "inferred_permissions": ["bot.extend"],
         "required_permission": "bot.extend",
         "contributes": None,
+        "filterable": False,
+        "filter_order": 0,
     },
 }
 
@@ -117,6 +134,8 @@ _DEFAULT_DESCRIPTOR: dict[str, Any] = {
     "inferred_permissions": [],
     "required_permission": None,
     "contributes": None,
+    "filterable": False,
+    "filter_order": 0,
 }
 
 # 派生集合：无进程类型（可省 entrypoint / declarative 风险）与 RPC 进程类型
@@ -143,3 +162,17 @@ def plugin_type_descriptor(plugin_type: str) -> dict[str, Any]:
     if descriptor:
         return dict(descriptor)
     return dict(_DEFAULT_DESCRIPTOR)
+
+
+def list_plugin_types() -> list[dict[str, Any]]:
+    """返回全部插件类型（按 filter_order 升序），供前端筛选/展示数据驱动。"""
+    items = []
+    for type_id, descriptor in PLUGIN_TYPE_SUPPORT.items():
+        items.append({
+            "id": type_id,
+            "level": descriptor["level"],
+            "filterable": bool(descriptor.get("filterable")),
+            "filter_order": int(descriptor.get("filter_order", 0)),
+        })
+    items.sort(key=lambda item: (item["filter_order"], item["id"]))
+    return items

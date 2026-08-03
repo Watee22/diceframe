@@ -12,11 +12,19 @@ import type {
   WorldListResponse,
 } from '@/api/types'
 
+export type PluginTypeInfo = {
+  id: string
+  level: string
+  filterable: boolean
+  filter_order: number
+}
+
 const pluginPath = (pluginId: string, suffix = '') =>
   `/plugins/${encodeURIComponent(pluginId)}${suffix}`
 
 export const pluginApi = {
   list: () => api<{ plugins: PluginInfo[] }>('/plugins'),
+  listTypes: () => api<{ ok: boolean; types: PluginTypeInfo[] }>('/plugins/types'),
   tools: () => api<PluginToolsResponse>('/plugins/tools'),
   invokeTool: (pluginId: string, toolName: string, argumentsValue: Record<string, unknown>) =>
     api<PluginToolInvokeResponse>(

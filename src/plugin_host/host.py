@@ -130,6 +130,11 @@ class PluginHost:
     def list_public(self) -> list[dict[str, Any]]:
         return [self.public_detail(plugin_id) for plugin_id in self.plugins]
 
+    def plugin_type_of(self, plugin_id: str) -> str:
+        """返回插件类型（卸载清理等按类型 descriptor 派发用）；未知插件返回空串。"""
+        runtime = self.plugins.get(plugin_id)
+        return self._plugin_type(runtime.manifest) if runtime else ""
+
     def public_detail(self, plugin_id: str) -> dict[str, Any]:
         runtime = self._require(plugin_id)
         if runtime.process and runtime.process.returncode is not None and runtime.status == "running":

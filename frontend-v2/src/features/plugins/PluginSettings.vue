@@ -10,8 +10,6 @@ import {
 } from '@vicons/ionicons5'
 import { useTheme } from '@/composables/useTheme'
 import { useLocale } from '@/composables/useLocale'
-import { useToast } from '@/composables/useToast'
-import type { MessageKey } from '@/i18n'
 import type { PluginInfo } from '@/api/types'
 import NapcatGuide from '@/components/plugins/NapcatGuide.vue'
 import { pluginApi } from '@/api/plugins'
@@ -20,20 +18,15 @@ import { useInstalledPlugins } from './useInstalledPlugins'
 import { usePluginMarketplace } from './usePluginMarketplace'
 import { usePluginTools } from './usePluginTools'
 import { usePluginExport } from './usePluginExport'
+import { usePluginTypes } from './usePluginTypes'
+import { usePluginUninstallCleanup } from './usePluginUninstallCleanup'
 
 const { t } = useLocale()
-const toast = useToast()
 const { pluginThemes, pluginThemeId, loadPluginThemes, applyPluginTheme, clearPluginTheme } = useTheme()
 const busy = ref('')
-// 插件类型筛选（已装 + 商店共用同一筛选值）：内容包/主题/工具/适配器不再混在一起
+// 插件类型筛选（已装 + 商店共用同一筛选值）：筛选条由后端类型表驱动
 const typeFilter = ref('')
-const pluginTypeFilters: { value: string; labelKey: MessageKey }[] = [
-  { value: 'content-pack', labelKey: 'pluginTypeContentPack' },
-  { value: 'theme', labelKey: 'pluginTypeTheme' },
-  { value: 'tool', labelKey: 'pluginTypeTool' },
-  { value: 'channel-adapter', labelKey: 'pluginTypeChannelAdapter' },
-  { value: 'map-pack', labelKey: 'pluginTypeMapPack' },
-]
+const { pluginTypeFilters, pluginTypeLabel, loadTypes } = usePluginTypes()
 const sortOptions = [
   { label: t('pluginSortDefault'), value: '' },
   { label: t('pluginSortStars'), value: 'stars' },
@@ -70,6 +63,8 @@ async function refreshPluginSurfaces() {
   await Promise.all([loadMarketplace(), loadPluginThemes(), loadContentResources()])
 }
 
+const { onUninstalled } = usePluginUninstallCleanup()
+
 const {
   mirrors, mirrorTests, marketplaceSource, marketKeyword,
   marketLoading, mirrorLoading, newMirror, sortMode, filteredMarketplace,
@@ -77,21 +72,7 @@ const {
   canUpdateFromStore, loadMarketplace, loadMirrors, installMarketPlugin,
   updateInstalledPlugin, uninstallPlugin, addMirror, saveMirror,
   deleteMirror, testMirror, openUrl, isNewerVersion,
-} = usePluginMarketplace(busy, refreshPluginSurfaces, typeFilter, (plugin, result) => {
-  // 卸载后：若正在用这个插件的主题则清除引用；并提示清掉了什么
-  const theme = pluginThemes.value.find(item => item.plugin_id === plugin.id)
-  if (theme && pluginThemeId.value === theme.id) clearPluginTheme()
-  if (result.lorebook_removed || result.cards_removed || result.worlds_removed) {
-    toast.success(t('pluginUninstallCleaned', {
-      entries: result.lorebook_removed || 0,
-      cards: result.cards_removed || 0,
-      worlds: result.worlds_removed || 0,
-    }))
-  }
-  if (result.worlds_kept?.length) {
-    toast.warning(t('pluginUninstallWorldsKept', { count: result.worlds_kept.length }))
-  }
-})
+} = usePluginMarketplace(busy, refreshPluginSurfaces, typeFilter, onUninstalled)
 const {
   plugins, filteredPlugins, expandedPluginNames, loading, installFile, overwriteInstall,
   load, ordered, value, textValue, selectValue, numberValue, set,
@@ -107,19 +88,6 @@ const themeOptions = computed(() => pluginThemes.value.map(theme => ({
   label: `${theme.name}${theme.plugin_name ? ` · ${theme.plugin_name}` : ''}`,
   value: theme.id,
 })))
-function pluginTypeLabel(type?: string): string {
-  const labels: Record<string, MessageKey> = {
-    'channel-adapter': 'pluginTypeChannelAdapter',
-    'content-pack': 'pluginTypeContentPack',
-    'theme': 'pluginTypeTheme',
-    'map-pack': 'pluginTypeMapPack',
-    'import-export': 'pluginTypeImportExport',
-    'provider': 'pluginTypeProvider',
-    'tool': 'pluginTypeTool',
-    'bot-extension': 'pluginTypeBotExtension',
-  }
-  return labels[type || ''] ? t(labels[type || '']) : type || t('uncategorized')
-}
 function permissionDescription(p: PluginInfo, permission: string): string {
   return p.permission_details?.find(item => item.id === permission)?.description || permission
 }
@@ -173,7 +141,7 @@ function renderDocsMarkdown(markdown: string): string {
 
 onMounted(async () => {
   await load()
-  await Promise.all([loadMarketplace(), loadMirrors(), loadContentResources(), loadWorlds()])
+  await Promise.all([loadMarketplace(), loadMirrors(), loadContentResources(), loadWorlds(), loadTypes()])
 })
 </script>
 

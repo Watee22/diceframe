@@ -8,6 +8,9 @@ from src.webui.routes._common import _get_api, _require_confirmed_request
 async def api_plugins(request: web.Request) -> web.Response:
     return web.json_response(_get_api(request).list_plugins())
 
+async def api_plugin_types(request: web.Request) -> web.Response:
+    return web.json_response(_get_api(request).list_plugin_types())
+
 async def api_plugins_rescan(request: web.Request) -> web.Response:
     denied=_require_confirmed_request(request)
     if denied is not None: return denied
@@ -294,6 +297,7 @@ async def api_plugin_clear_card_cache(request: web.Request) -> web.Response:
 
 def register_plugins(app: web.Application) -> None:
     app.router.add_get("/api/plugins",api_plugins)
+    app.router.add_get("/api/plugins/types",api_plugin_types)
     app.router.add_post("/api/plugins/rescan",api_plugins_rescan)
     app.router.add_post("/api/plugins/install",api_plugin_install)
     app.router.add_get("/api/plugins/marketplace",api_plugin_marketplace)

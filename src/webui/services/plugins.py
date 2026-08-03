@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.bots.qq.card_renderer import cleanup_card_cache
 from src.plugin_host.content import safe_id_part
+from src.plugin_host.support import list_plugin_types as _support_plugin_types, plugin_type_descriptor
 
 if TYPE_CHECKING:
     from src.webui.api import WebAPI
@@ -16,6 +17,10 @@ logger = logging.getLogger("trpg")
 
 def list_plugins(api: "WebAPI") -> dict[str, Any]:
     return {"ok": True, "plugins": api._plugins.list_public() if api._plugins else []}
+
+def list_plugin_types(api: "WebAPI") -> dict[str, Any]:
+    """插件类型清单（数据驱动前端筛选/展示）。"""
+    return {"ok": True, "types": _support_plugin_types()}
 
 async def rescan_plugins(api: "WebAPI") -> dict[str, Any]:
     if not api._plugins:
@@ -130,11 +135,31 @@ async def update_marketplace_plugin(api: "WebAPI", plugin_id: str) -> dict[str, 
         return {"ok": False, "error": "插件宿主未启用"}
     return {"ok": True, **await api._plugins.update_from_marketplace(plugin_id)}
 
+# 卸载清理域注册表：新增清理域时实现 handler 并在此注册，再在类型 descriptor 的
+# cleanup 列表声明。content_data 是 lorebook+worlds+cards 的耦合清理（必须先抓
+# 世界列表再删条目，见 cleanup_plugin_lorebook），不可拆成独立域。
+_CLEANUP_DOMAINS = {
+    "content_data": cleanup_plugin_lorebook,
+}
+
+
+def _run_cleanup_domains(api: "WebAPI", plugin_id: str) -> dict[str, Any]:
+    """按插件类型 descriptor 声明的清理域执行，聚合各域返回的计数/保留信息。"""
+    plugin_type = api._plugins.plugin_type_of(plugin_id) if api._plugins else ""
+    descriptor = plugin_type_descriptor(plugin_type)
+    result: dict[str, Any] = {}
+    for domain_name in descriptor.get("cleanup", []):
+        handler = _CLEANUP_DOMAINS.get(domain_name)
+        if handler:
+            result.update(handler(api, plugin_id))
+    return result
+
+
 async def uninstall_plugin(api: "WebAPI", plugin_id: str, delete_data: bool = False) -> dict[str, Any]:
     if not api._plugins:
         return {"ok": False, "error": "插件宿主未启用"}
-    # 卸载前清理该插件灌入的世界书条目、角色卡与它创建的世界，避免残留
-    cleanup = cleanup_plugin_lorebook(api, plugin_id)
+    # 卸载前按类型 descriptor 声明的清理域清理插件灌入的数据，避免残留
+    cleanup = _run_cleanup_domains(api, plugin_id)
     result = await api._plugins.uninstall(plugin_id, delete_data=delete_data)
     return {
         "ok": True,
