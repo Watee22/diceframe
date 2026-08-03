@@ -88,7 +88,9 @@ SakuraFrp 提供 Windows、macOS、Linux、OpenWrt 和 Docker 客户端，并有
 本地端口：18000
 ```
 
-SakuraFrp 官方要求通过 TCP 隧道转发 HTTP 网页时选择非内地节点。分享前请确认最终地址能从手机流量或其他网络打开，并优先使用其 HTTPS、自动 HTTPS 或免费子域名能力。
+SakuraFrp 官方要求通过 TCP 隧道转发 HTTP 网页时选择非内地节点。分享前请确认最终地址能从手机流量或其他网络打开，并必须开启其 HTTPS、自动 HTTPS 或免费子域名能力。
+
+**最后一步：把外网地址填进 DiceFrame。** 隧道跑起来后，在 SakuraFrp 启动器里找到它分配给你的外网访问地址（TCP 隧道是 `域名:端口`，形如 `frp-xxx.natfrp.cloud:12345`；开了免费子域名或 HTTPS 则是 `https://你的子域名.natfrp.cloud`）。复制这个地址，进 DiceFrame「设置 → 分享地址 → 分享链接地址」粘进去保存。只有填了它，邀请链接才会指向外网地址，外面的人才能通过链接连进来；不填的话邀请链接默认是 `127.0.0.1:18000`，只有你自己这台电脑能打开。
 
 ### Cloudflare Tunnel
 
