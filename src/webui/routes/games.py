@@ -16,6 +16,7 @@ from src.webui.routes._common import (
     _get_api,
     _require_confirmed_request,
 )
+from src.webui.services._common import _GAME_KEY_SEP
 
 logger = logging.getLogger("trpg")
 
@@ -486,6 +487,9 @@ async def api_import_game(request: web.Request) -> web.Response:
     except Exception as exc:
         logger.exception("导入存档失败")
         return web.json_response({"ok": False, "error": f"导入存档失败：{exc}"}, status=400)
+    # engine 层返回 game_key 为 list（平台|target|account 三段），转成公开 | 分隔字符串
+    if result.get("ok") and result.get("game_key"):
+        result["game_key"] = _GAME_KEY_SEP.join(str(x) for x in result["game_key"])
     return web.json_response(result, status=200 if result.get("ok") else 400)
 
 
@@ -636,10 +640,14 @@ async def api_swipe(request: web.Request) -> web.Response:
         return denied
     if request.method == "PUT":
         nar = await api._handler.generate_swipe(inst, round_num)
+        # swipe 改写了内存 log（gm_response/swipes），落盘否则重启即丢
+        await api._reg.save(inst)
         return web.json_response({"ok": True, "narration": nar})
     else:
         idx = body.get("swipe_index", 0)
         ok = await inst.switch_swipe(round_num, idx)
+        if ok:
+            await api._reg.save(inst)
         return web.json_response({"ok": ok})
 
 

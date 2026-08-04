@@ -11,6 +11,90 @@ class _Api:
         pass
 
 
+def test_export_preserves_business_fields_strips_runtime_markers(tmp_path):
+    """导出去掉运行期插件标记，保留 source/raw_sillytavern 业务字段。"""
+    import json
+    from src.webui.services.character_cards import export_character_cards
+
+    class _Api:
+        def __init__(self, path):
+            self._character_cards_path = path
+
+    cards_path = tmp_path / "cards.json"
+    api = _Api(cards_path)
+    card = {
+        "id": "st_123", "schema_version": 2, "character_name": "Himmel",
+        "attributes": {}, "skills": [],
+        "source": "SillyTavern: himmel.png",
+        "raw_sillytavern": {"name": "Himmel", "description": "冒险者"},
+        "source_plugin": "napcat", "plugin_content_id": "p1",
+    }
+    cards_path.write_text(json.dumps([card], ensure_ascii=False), encoding="utf-8")
+    result = export_character_cards(api, ["st_123"])
+    assert result["ok"] is True
+    payload = json.loads(result["payload"].decode("utf-8"))
+    # 业务字段保留
+    assert payload["raw_sillytavern"] == {"name": "Himmel", "description": "冒险者"}
+    assert payload["source"] == "SillyTavern: himmel.png"
+    # 运行期插件标记去掉
+    assert "source_plugin" not in payload
+    assert "plugin_content_id" not in payload
+
+
+def test_export_batch_disambiguates_same_name(tmp_path):
+    """批量导出同名卡时 zip 内文件名不冲突，不互相覆盖。"""
+    import io
+    import json
+    import zipfile
+    from src.webui.services.character_cards import export_character_cards
+
+    class _Api:
+        def __init__(self, path):
+            self._character_cards_path = path
+
+    cards_path = tmp_path / "cards.json"
+    api = _Api(cards_path)
+    cards = [
+        {"id": "c1", "schema_version": 2, "character_name": "艾琳", "attributes": {}},
+        {"id": "c2", "schema_version": 2, "character_name": "艾琳", "attributes": {}},
+    ]
+    cards_path.write_text(json.dumps(cards, ensure_ascii=False), encoding="utf-8")
+    result = export_character_cards(api, ["c1", "c2"])
+    assert result["ok"] is True
+    assert result["content_type"] == "application/zip"
+    with zipfile.ZipFile(io.BytesIO(result["payload"])) as zf:
+        names = zf.namelist()
+        assert len(names) == 2  # 两张都保留
+        assert len(set(names)) == 2  # 文件名不重复
+
+
+def test_export_import_roundtrip_preserves_raw_sillytavern(tmp_path):
+    """导出→导入无损往返：raw_sillytavern 保留，识别为 DiceFrame 卡原样入库。"""
+    import asyncio
+    import base64
+    import json
+    from src.webui.services.character_cards import export_character_cards, import_character_card
+
+    class _Api:
+        def __init__(self, path):
+            self._character_cards_path = path
+
+    cards_path = tmp_path / "cards.json"
+    api = _Api(cards_path)
+    card = {
+        "id": "st_123", "schema_version": 2, "character_name": "Himmel",
+        "attributes": {}, "skills": [], "source": "SillyTavern: himmel.png",
+        "raw_sillytavern": {"name": "Himmel", "description": "冒险者"},
+    }
+    cards_path.write_text(json.dumps([card], ensure_ascii=False), encoding="utf-8")
+    exported = export_character_cards(api, ["st_123"])
+    file_data = base64.b64encode(exported["payload"]).decode()
+    imported = asyncio.run(import_character_card(api, file_data=file_data, file_name="Himmel.json"))
+    assert imported["ok"] is True
+    assert imported["format"] == "diceframe"
+    assert imported["card"]["raw_sillytavern"] == card["raw_sillytavern"]
+
+
 def test_import_tavern_as_npc_creates_npc_and_book_entries(tmp_path):
     store = LorebookStore(tmp_path / "lore.db")
     store.open()

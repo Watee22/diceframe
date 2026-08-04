@@ -364,9 +364,87 @@ class TestGameRegistry:
         lines = [l for l in chatlog.read_text(encoding="utf-8").splitlines() if l.strip()]
         assert len(lines) == 2
 
+    async def test_rollback_then_save_load_keeps_history_consistent(self, tmp_path):
+        """rollback 弹出末尾轮次后 save→load，被回滚的轮次不复活、历史与状态一致。"""
+        reg = GameRegistry(tmp_path / "saves")
+        inst = GameInstance(game_key=("web", "rb", "bot"))
+        for i in range(3):
+            inst.log.append({"round": i + 1, "content": f"r{i+1}"})
+        await reg.save(inst)
+        await inst.rollback_last_round()  # 弹出 r3
+        assert len(inst.log) == 2
+        await reg.save(inst)
+        reg2 = GameRegistry(tmp_path / "saves")
+        restored = await reg2.load(("web", "rb", "bot"))
+        assert len(restored.log) == 2  # 死条目 r3 不复活
+        assert restored.log[-1]["round"] == 2
+
+    async def test_rollback_then_advance_save_load(self, tmp_path):
+        """rollback 后推进新轮，load 后死条目丢弃、新轮保留。"""
+        reg = GameRegistry(tmp_path / "saves")
+        inst = GameInstance(game_key=("web", "rba", "bot"))
+        for i in range(3):
+            inst.log.append({"round": i + 1, "content": f"r{i+1}"})
+        await reg.save(inst)
+        await inst.rollback_last_round()  # 弹出 r3
+        inst.log.append({"round": 4, "content": "r4"})  # 推进新轮
+        await reg.save(inst)
+        reg2 = GameRegistry(tmp_path / "saves")
+        restored = await reg2.load(("web", "rba", "bot"))
+        assert [e["round"] for e in restored.log] == [1, 2, 4]  # r3 死条目丢弃，r4 保留
+
+    async def test_swipe_then_save_load_preserves_swipe(self, tmp_path):
+        """swipe 改写末尾轮的 gm_response 后 save→load，swipe 版本保留、旧版本不复活。"""
+        reg = GameRegistry(tmp_path / "saves")
+        inst = GameInstance(game_key=("web", "sw", "bot"))
+        inst.log.append({"round": 1, "gm_response": "原版", "actions": [], "swipes": []})
+        await reg.save(inst)
+        await inst.finish_judgment_with_swipe("swipe版", 1)
+        assert inst.log[-1]["gm_response"] == "swipe版"
+        await reg.save(inst)
+        reg2 = GameRegistry(tmp_path / "saves")
+        restored = await reg2.load(("web", "sw", "bot"))
+        assert restored.log[-1]["gm_response"] == "swipe版"  # swipe 保留，旧版不复活
+
+    async def test_swipe_middle_round_then_save_load(self, tmp_path):
+        """swipe 改写中间轮（非末尾），load 后 swipe 保留、其他轮不受影响。"""
+        reg = GameRegistry(tmp_path / "saves")
+        inst = GameInstance(game_key=("web", "swm", "bot"))
+        for i in range(3):
+            inst.log.append({"round": i + 1, "gm_response": f"原{i+1}", "actions": [], "swipes": []})
+        await reg.save(inst)
+        await inst.finish_judgment_with_swipe("swipe2", 2)  # swipe 第 2 轮
+        await reg.save(inst)
+        reg2 = GameRegistry(tmp_path / "saves")
+        restored = await reg2.load(("web", "swm", "bot"))
+        assert [e["gm_response"] for e in restored.log] == ["原1", "swipe2", "原3"]
+
+    async def test_swipe_window_edge_with_non_advancing_save_keeps_early_history(self, tmp_path):
+        """swipe 窗口边界轮 + 非推进 save，load 后窗口前的更早历史不丢。
+
+        场景：150 轮（超出 100 窗口），swipe 第 51 轮（core_log[0]），某非推进操作
+        （改房间密码等）触发 save。state.json 里 r51 是 swipe 版，chatlog 里 r51 仍是
+        原版，锚点对齐失败——兜底须保留 r1..r50，不能整个用 core_log 替换。
+        """
+        reg = GameRegistry(tmp_path / "saves")
+        inst = GameInstance(game_key=("web", "swe", "bot"))
+        for i in range(150):
+            inst.log.append({"round": i + 1, "content": f"r{i+1}"})
+        await reg.save(inst)
+        # 模拟 swipe 第 51 轮（core_log[0]）：改 content，不推进轮次
+        inst.log[50]["content"] = "r51-swiped"
+        await reg.save(inst)  # 非推进 save
+        reg2 = GameRegistry(tmp_path / "saves")
+        restored = await reg2.load(("web", "swe", "bot"))
+        assert len(restored.log) == 150  # 更早历史不丢
+        assert restored.log[0]["round"] == 1  # r1 仍在
+        assert restored.log[50]["content"] == "r51-swiped"  # swipe 版保留
+        assert restored.log[-1]["round"] == 150
+
     async def test_import_save_zip_creates_new_game(self, tmp_path):
-        """导入存档 zip 生成新 game_key，不覆盖现有对局。"""
+        """导入存档 zip 生成新 game_key，不覆盖现有对局，且立即可见于内存。"""
         import io
+        import json as _json
         import zipfile
         from src.engine.game_instance import GameRegistry
         reg = GameRegistry(tmp_path / "saves")
@@ -379,16 +457,40 @@ class TestGameRegistry:
         }
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w") as zf:
-            zf.writestr("state.json", __import__("json").dumps(state))
-            zf.writestr("chatlog.jsonl", __import__("json").dumps({"round": 1, "content": "a"}) + "\n")
+            zf.writestr("state.json", _json.dumps(state))
+            zf.writestr("chatlog.jsonl", _json.dumps({"round": 1, "content": "a"}) + "\n")
         result = await reg.import_save_zip(buffer.getvalue())
         assert result["ok"] is True
-        new_key = tuple(result["game_key"].split("#"))
+        new_key = tuple(result["game_key"])  # 返回 list（平台|target|account 三段）
         assert new_key[1] != "orig"  # 自动生成新 game_key
-        # 新存档目录存在
-        assert (tmp_path / "saves" / result["game_key"] / "state.json").exists()
-        # 不覆盖原存档
+        # 内存立即可见（不必等重启 recover_all）
+        assert reg.get(new_key) is not None
+        assert reg.get(new_key).round_number == 5
+        # state.json 内 game_key 已改写为新值，避免 register 串到原对局
+        saved = _json.loads(reg._save_path(new_key).read_text(encoding="utf-8"))
+        assert saved["game_key"] == list(new_key)
+        # 不覆盖原存档目录
         assert not (tmp_path / "saves" / "web#orig#bot").exists()
+
+    async def test_import_save_zip_game_key_parseable(self, tmp_path):
+        """导入返回的 game_key 经 | join 后能被 _parse_key 正确解析（公开 key 可访问）。"""
+        import io
+        import json as _json
+        import zipfile
+        from src.engine.game_instance import GameRegistry
+        from src.webui.api import WebAPI
+        reg = GameRegistry(tmp_path / "saves")
+        state = {
+            "game_key": ["web", "orig", "bot"], "world_id": "w1", "world_name": "Orig",
+            "state": "paused", "players": {}, "npcs": {}, "round_number": 1,
+            "log": [], "summary": {}, "key_facts": [],
+        }
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as zf:
+            zf.writestr("state.json", _json.dumps(state))
+        result = await reg.import_save_zip(buffer.getvalue())
+        public_key = "|".join(str(x) for x in result["game_key"])
+        assert WebAPI._parse_key(public_key) == tuple(result["game_key"])
 
     async def test_import_save_zip_rejects_missing_state(self, tmp_path):
         """存档包缺 state.json 报错。"""

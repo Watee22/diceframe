@@ -172,3 +172,27 @@ class TestParsePlayerRoll:
 
     def test_no_roll(self):
         assert parse_player_roll("我要攻击") is None
+
+    def test_alias_chinese_words(self):
+        """投骰/丢骰/骰子 等中文别名同样触发手动掷骰。"""
+        for cmd in ("投骰 d20", "丢骰 2d6", "骰子 d100", "投个骰 d20+3"):
+            assert parse_player_roll(cmd) is not None, cmd
+
+    def test_alias_english(self):
+        """roll / dice 英文触发词（大小写不敏感）。"""
+        assert parse_player_roll("roll d20") is not None
+        assert parse_player_roll("ROLL 2d6+1") is not None
+        assert parse_player_roll("/roll d100") is not None
+        assert parse_player_roll("dice 3d8") is not None
+
+    def test_alias_with_slash(self):
+        """别名后接斜杠指令也能解析。"""
+        r = parse_player_roll("/投骰 d20")
+        assert r is not None and "d20" in r.formula
+
+    def test_no_false_positive_on_dice_word(self):
+        """「骰子真有趣」「我要 roll 起来」等无公式文本不误触发。"""
+        assert parse_player_roll("骰子真有趣") is None
+        assert parse_player_roll("这把骰子不错") is None
+        assert parse_player_roll("let's roll") is None
+        assert parse_player_roll("我要攻击") is None

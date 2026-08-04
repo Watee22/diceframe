@@ -65,6 +65,9 @@ class FakeRegistry:
     def get(self, key: tuple[str, ...]):
         return self.items.get(key)
 
+    async def save(self, instance) -> None:
+        """权限测试不验证落盘，空实现满足路由调用即可。"""
+
     def _save_path(self, key: tuple[str, ...]) -> Path:
         return self.root / "__".join(key) / "state.json"
 

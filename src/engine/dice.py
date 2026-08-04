@@ -180,9 +180,20 @@ def check_d100_bonus(threshold: int, bonus_dice: int = 0, penalty_dice: int = 0)
     return result, verdict
 
 
+_ROLL_COMMAND_WORDS = (
+    "掷骰", "投骰", "丢骰", "骰子", "投个骰", "掷个骰", "丢个骰", "roll", "dice",
+)
+
+
 def parse_player_roll(text: str) -> DiceResult | None:
-    """尝试从玩家文本中解析手动掷骰指令，如 /掷骰 2d6 或 掷骰 d20+3。"""
-    match = re.search(r"掷骰\s*(\d*d\d+\s*[+-]?\s*\d*)", text)
+    """尝试从玩家文本中解析手动掷骰指令，如 /掷骰 2d6 或 roll d20+3。
+
+    触发词覆盖中文（掷骰/投骰/丢骰/骰子…）与英文（roll/dice），与检定意图词表里的
+    generic 别名保持一致。匹配「触发词 + 公式」结构：触发词与公式间允许空格/斜杠，
+    公式需紧跟其后（防止「骰子真有趣」之类误触发——要求词后必须有 NdM 公式）。
+    """
+    pattern = rf"(?:{'|'.join(_ROLL_COMMAND_WORDS)})\s*[/]?\s*(\d*d\d+\s*[+-]?\s*\d*)"
+    match = re.search(pattern, text, flags=re.IGNORECASE)
     if not match:
         return None
     formula = match.group(1).strip().replace(" ", "")

@@ -364,14 +364,26 @@ def export_character_cards(api: "WebAPI", card_ids: list[str]) -> dict[str, Any]
     if not selected:
         return {"ok": False, "error": "未找到所选角色卡"}
 
-    # 导出时去掉运行期来源标记，保留业务字段
-    skip = {"source", "source_plugin", "plugin_content_id", "raw_sillytavern"}
+    # 仅去掉运行期插件来源标记；source（人类可读来源）和 raw_sillytavern（酒馆原始数据）
+    # 是业务字段，保留以保证导出→导入无损往返（否则酒馆卡丢 raw_sillytavern 后无法还原）。
+    skip = {"source_plugin", "plugin_content_id"}
     payloads: list[tuple[str, str]] = []
+    used_names: dict[str, int] = {}
     for card in selected:
         clean = {k: v for k, v in card.items() if k not in skip}
         name = str(clean.get("character_name") or clean.get("name") or "角色卡")
         safe = "".join(ch for ch in name if ch.isalnum() or ch in "-_ ").strip() or "character"
-        payloads.append((f"{safe}.json", json.dumps(clean, ensure_ascii=False, indent=2)))
+        # 批量导出时同名卡用 card_id 短缀区分，避免 zip 内同名条目互相覆盖
+        cid = str(card.get("id") or "")
+        if cid:
+            safe = f"{safe}_{cid[:8]}"
+        filename = f"{safe}.json"
+        if filename in used_names:
+            used_names[filename] += 1
+            filename = f"{safe}_{used_names[filename]}.json"
+        else:
+            used_names[filename] = 0
+        payloads.append((filename, json.dumps(clean, ensure_ascii=False, indent=2)))
 
     if len(payloads) == 1:
         filename, content = payloads[0]
