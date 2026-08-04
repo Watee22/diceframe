@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import type { Component } from 'vue'
 import {
   NButton, NCheckbox, NCollapse, NCollapseItem, NIcon, NInput, NInputNumber,
   NModal, NPagination, NSelect, NSpin, NSwitch, NTabPane, NTabs, NTag,
 } from 'naive-ui'
 import {
-  AddOutline, ChevronDown, ChevronUp, CloudDownloadOutline, CreateOutline,
-  ExtensionPuzzleOutline, RefreshOutline, Star, TrashOutline,
+  AddOutline, ChatbubblesOutline, ChevronDown, ChevronUp, CloudDownloadOutline,
+  ColorPaletteOutline, ConstructOutline, CreateOutline, CubeOutline,
+  ExtensionPuzzleOutline, MapOutline, RefreshOutline, Star, TrashOutline,
 } from '@vicons/ionicons5'
 import { useTheme } from '@/composables/useTheme'
 import { useLocale } from '@/composables/useLocale'
@@ -27,6 +29,18 @@ const busy = ref('')
 // 插件类型筛选（已装 + 商店共用同一筛选值）：筛选条由后端类型表驱动
 const typeFilter = ref('')
 const { pluginTypeFilters, pluginTypeLabel, loadTypes } = usePluginTypes()
+
+// 插件类型 -> 图标映射（商店卡片标题左侧）
+const pluginTypeIcons: Record<string, Component> = {
+  'content-pack': CubeOutline,
+  'theme': ColorPaletteOutline,
+  'tool': ConstructOutline,
+  'channel-adapter': ChatbubblesOutline,
+  'map-pack': MapOutline,
+}
+function pluginTypeIcon(type?: string): Component {
+  return (type && pluginTypeIcons[type]) || ExtensionPuzzleOutline
+}
 const sortOptions = [
   { label: t('pluginSortDefault'), value: '' },
   { label: t('pluginSortStars'), value: 'stars' },
@@ -313,17 +327,18 @@ onMounted(async () => {
         <div class="market-grid">
           <article v-for="item in paginatedMarketplace" :key="item.id" class="market-card">
             <div class="market-title">
-              <NIcon :component="ExtensionPuzzleOutline" :size="26" class="market-title-icon" />
-              <div>
+              <NIcon :component="pluginTypeIcon(item.plugin_type)" :size="26" class="market-title-icon" />
+              <div class="market-title-text">
                 <h3>{{ item.name }}</h3>
                 <p class="muted">{{ item.id }} · {{ item.version || t('unknownVersion') }}</p>
+                <p v-if="item.author" class="muted market-author">{{ t('author') }}: {{ item.author }}</p>
               </div>
               <NTag v-if="item.stars" size="small" class="stars-tag" :title="t('pluginStars', { count: item.stars })">
                 <template #icon><NIcon :component="Star" /></template>
                 {{ item.stars }}
               </NTag>
             </div>
-            <p class="market-desc">{{ item.description || t('noDescription') }}</p>
+            <p class="market-desc" :title="item.description">{{ item.description || t('noDescription') }}</p>
             <div class="tag-row">
               <NTag v-if="item.plugin_type" size="small">{{ pluginTypeLabel(item.plugin_type) }}</NTag>
               <NTag v-if="item.support?.level === 'partial'" type="warning" size="small">{{ t('pluginSupportPartial') }}</NTag>
@@ -518,13 +533,13 @@ onMounted(async () => {
       </section>
 
       <div class="mirror-form">
-        <NInput v-model:value="newMirror.id" :placeholder="t('mirrorIdPlaceholder')" />
-        <NInput v-model:value="newMirror.name" :placeholder="t('name')" />
-        <NInput v-model:value="newMirror.raw_prefix" class="mirror-url-input" :placeholder="t('rawPrefix')" />
-        <NInput v-model:value="newMirror.clone_prefix" class="mirror-url-input" :placeholder="t('clonePrefix')" />
-        <NInputNumber v-model:value="newMirror.priority" :min="1" :placeholder="t('priority')" />
-        <NSwitch v-model:value="newMirror.enabled" />
-        <NButton type="primary" :loading="busy === 'mirror:add'" @click="addMirror">
+        <NInput v-model:value="newMirror.id" class="mirror-field-id" :placeholder="t('mirrorIdPlaceholder')" />
+        <NInput v-model:value="newMirror.name" class="mirror-field-name" :placeholder="t('name')" />
+        <NInput v-model:value="newMirror.raw_prefix" class="mirror-url-input mirror-field-raw" :placeholder="t('rawPrefix')" />
+        <NInput v-model:value="newMirror.clone_prefix" class="mirror-url-input mirror-field-clone" :placeholder="t('clonePrefix')" />
+        <NInputNumber v-model:value="newMirror.priority" :min="1" class="mirror-field-priority" :placeholder="t('priority')" />
+        <NSwitch v-model:value="newMirror.enabled" class="mirror-field-switch" />
+        <NButton type="primary" class="mirror-field-add" :loading="busy === 'mirror:add'" @click="addMirror">
           <template #icon><NIcon :component="AddOutline" /></template>
           {{ t('add') }}
         </NButton>
@@ -1038,9 +1053,12 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 14px;
+  align-items: start;
 }
 
 .market-card {
+  display: flex;
+  flex-direction: column;
   padding: 16px;
   min-width: 0;
 }
@@ -1049,7 +1067,15 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: 28px 1fr auto;
   gap: 10px;
-  align-items: start;
+  align-items: center;
+}
+
+.market-title-text {
+  min-width: 0;
+}
+
+.market-author {
+  margin-top: 2px;
 }
 
 .market-title-icon {
@@ -1063,8 +1089,13 @@ onMounted(async () => {
 
 .market-desc {
   min-height: 42px;
+  max-height: 3.2em;
+  overflow: hidden;
   color: var(--text);
   line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 .market-permissions {
@@ -1078,7 +1109,18 @@ onMounted(async () => {
 }
 
 .tag-row {
-  margin: 12px 0;
+  margin: 12px 0 6px 0;
+}
+
+.market-actions {
+  margin-top: auto;
+  flex-wrap: nowrap;
+}
+
+.market-actions :deep(button) {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .stars-tag :deep(.n-icon) {
@@ -1087,7 +1129,10 @@ onMounted(async () => {
 
 .mirror-form {
   display: grid;
-  grid-template-columns: minmax(120px, .7fr) minmax(140px, .8fr) minmax(180px, 1.2fr) minmax(180px, 1.2fr) minmax(96px, .5fr) auto auto;
+  grid-template-columns: 1fr 1fr 96px auto auto;
+  grid-template-areas:
+    "id name priority switch btn"
+    "raw raw clone clone .";
   gap: 10px;
   align-items: center;
   margin-bottom: 14px;
@@ -1095,6 +1140,13 @@ onMounted(async () => {
   max-width: 100%;
   overflow: hidden;
 }
+.mirror-form .mirror-field-id { grid-area: id; }
+.mirror-form .mirror-field-name { grid-area: name; }
+.mirror-form .mirror-field-raw { grid-area: raw; }
+.mirror-form .mirror-field-clone { grid-area: clone; }
+.mirror-form .mirror-field-priority { grid-area: priority; }
+.mirror-form .mirror-field-switch { grid-area: switch; }
+.mirror-form .mirror-field-add { grid-area: btn; }
 
 .mirror-list {
   display: grid;
@@ -1147,11 +1199,14 @@ onMounted(async () => {
 
 @media (max-width: 1180px) {
   .mirror-form {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: 1fr 1fr auto auto;
+    grid-template-areas:
+      "id name priority btn"
+      "raw raw clone clone";
   }
 
-  .mirror-form .mirror-url-input {
-    grid-column: 1 / -1;
+  .mirror-form .mirror-field-switch {
+    display: none;
   }
 
   .mirror-edit-grid {
@@ -1164,7 +1219,21 @@ onMounted(async () => {
 }
 
 @media (max-width: 980px) {
-  .mirror-form,
+  .mirror-form {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "id"
+      "name"
+      "raw"
+      "clone"
+      "priority"
+      "btn";
+  }
+
+  .mirror-form .mirror-field-switch {
+    display: none;
+  }
+
   .mirror-edit-grid {
     grid-template-columns: 1fr;
   }

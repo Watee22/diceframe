@@ -514,7 +514,7 @@ async function onWizardSubmit(c: CharacterSheet & { character_name: string }) {
             <option v-for="rule in rules" :key="rule.rule_id" :value="rule.rule_id">{{ ruleNameOf(rule) }}</option>
           </select>
         </label>
-        <button class="primary" :disabled="!ruleId || ruleSchemaLoading" @click="showWizard = true">+ {{ t('newCharacterCard') }}</button>
+        <button class="success" :disabled="!ruleId || ruleSchemaLoading" @click="showWizard = true">+ {{ t('newCharacterCard') }}</button>
         <button @click="load">{{ t('refresh') }}</button>
       </div>
     </header>
@@ -562,7 +562,7 @@ async function onWizardSubmit(c: CharacterSheet & { character_name: string }) {
       </article>
     </div>
 
-    <h2 class="field-group" style="display:flex;align-items:center;justify-content:space-between"><span>{{ t('sharedCharacterLibrary') }}</span><span class="actions"><button class="primary" :disabled="busy || !selectedCardIds.size" @click="exportSelected">{{ t('exportSelected') }}</button><button class="primary" :disabled="busy" @click="diceframeInput?.click()">{{ t('importDiceframeCard') }}</button><button :disabled="busy" @click="openTavernImport">{{ t('importTavernCard') }}</button></span></h2>
+    <h2 class="field-group" style="display:flex;align-items:center;justify-content:space-between"><span>{{ t('sharedCharacterLibrary') }}</span><span class="actions"><button class="primary" :disabled="busy || !selectedCardIds.size" @click="exportSelected">{{ t('exportSelected') }}</button><button class="success" :disabled="busy" @click="diceframeInput?.click()">{{ t('importDiceframeCard') }}</button><button :disabled="busy" @click="openTavernImport">{{ t('importTavernCard') }}</button></span></h2>
     <input ref="tavernInput" type="file" accept=".json,application/json" @change="onImportTavern" hidden>
     <input ref="diceframeInput" type="file" accept=".json,application/json" @change="onImportDiceframe" hidden>
     <Modal v-if="tavernImportOpen" :title="t('importTavernCard')" @close="tavernImportOpen = false">
@@ -591,16 +591,14 @@ async function onWizardSubmit(c: CharacterSheet & { character_name: string }) {
           <PortraitImage :portrait="c.portrait" :rule-id="c.rule_id" :seed="cardId(c) || c.character_name" :name="c.character_name" :size="56" />
           <div>
           <h2>{{ c.character_name }}</h2>
-          <p class="muted">
-            <span class="badge">{{ cardRuleLabel(c) }}</span>
-            {{ c.race }} · {{ c.class }}<span v-if="c.source"> · {{ t('source') }} {{ c.source }}</span>
-          </p>
-          <p v-if="c.background" class="muted">{{ String(c.background).slice(0, 80) }}</p>
+          <p class="muted card-rule"><span class="badge" :title="cardRuleLabel(c)">{{ cardRuleLabel(c) }}</span></p>
+          <p class="muted card-identity">{{ c.race }} · {{ c.class }}<span v-if="c.source"> · {{ t('source') }} {{ c.source }}</span></p>
+          <p v-if="c.background" class="muted card-bg" :title="String(c.background)">{{ String(c.background).slice(0, 80) }}</p>
           </div>
         </div>
         <div class="actions">
-          <button @click="exportSingleCard(c)">{{ t('export') }}</button>
           <button @click="openCardEdit(c)">{{ t('editCard') }}</button>
+          <button @click="exportSingleCard(c)">{{ t('export') }}</button>
           <button class="danger" @click="deleteCard(c)">{{ t('delete') }}</button>
         </div>
       </article>

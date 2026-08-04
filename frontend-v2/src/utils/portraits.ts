@@ -21,7 +21,7 @@ const ATLAS_POSITIONS = ['0% 0%', '100% 0%', '0% 100%', '100% 100%']
 const PORTRAITS_PER_ATLAS = ATLAS_POSITIONS.length
 const BUILTIN_ATLAS_COUNT = 2
 
-function builtinRule(ruleId?: string): string {
+export function builtinRule(ruleId?: string): string {
   const normalized = String(ruleId || '').replace(/_en$/, '')
   return SUPPORTED_RULES.has(normalized) ? normalized : 'freeform_fantasy'
 }

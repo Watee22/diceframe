@@ -210,7 +210,7 @@ async function deleteRule(rule: RuleSummary) {
             <span><strong>{{ t('attributes') }}</strong>{{ r.attr_count ?? '-' }} {{ t('itemsUnit') }}</span>
             <span v-if="r.file"><strong>{{ t('file') }}</strong>{{ r.file }}</span>
           </div>
-          <p>{{ localizedField<string>(r, 'description') || '' }}</p>
+          <p :title="localizedField<string>(r, 'description') || ''">{{ localizedField<string>(r, 'description') || '' }}</p>
         </div>
         <div class="actions">
           <button @click="openRule(r)">{{ r.custom ? t('editRule') : t('copyAndEdit') }}</button>

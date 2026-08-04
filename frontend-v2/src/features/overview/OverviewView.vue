@@ -179,7 +179,7 @@ onMounted(load)
         <button @click="saveImportInput?.click()" :disabled="busy">{{ t('importSave') }}</button>
         <input ref="saveImportInput" type="file" accept=".zip" @change="onImportSave" hidden>
         <button v-if="selected.length" class="danger" @click="batchRemove" :disabled="busy">{{ t('deleteSelected') }} {{ selected.length }}</button>
-        <button class="primary" @click="play('')">{{ t('createAdventure') }}</button>
+        <button class="success" @click="play('')">{{ t('createAdventure') }}</button>
       </div>
     </header>
 
@@ -229,7 +229,7 @@ onMounted(load)
     <section v-else class="empty-panel">
       <h2>{{ t('emptyTitle') }}</h2>
       <p class="muted">{{ t('emptySubtitle') }}</p>
-      <button class="primary" @click="play('')">{{ t('createAdventure') }}</button>
+      <button class="success" @click="play('')">{{ t('createAdventure') }}</button>
     </section>
   </section>
 </template>

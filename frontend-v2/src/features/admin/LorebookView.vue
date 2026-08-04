@@ -276,7 +276,7 @@ async function importLore(e: Event) {
         <option value="" disabled>{{ t('chooseWorldEllipsis') }}</option>
         <option v-for="w in languageWorlds" :key="worldIdOf(w)" :value="worldIdOf(w)">{{ worldNameOf(w) }} ({{ t('entriesCount', { count: w.entry_count || 0 }) }})</option>
       </select>
-      <button class="primary" @click="toggleNewWorld">+ {{ t('newWorld') }}</button>
+      <button class="success" @click="toggleNewWorld">+ {{ t('newWorld') }}</button>
       <button v-if="currentWorldId" class="danger" @click="deleteWorld" :disabled="busy">{{ t('deleteWorldAction') }}</button>
     </div>
 
@@ -294,7 +294,7 @@ async function importLore(e: Event) {
     </details>
 
     <div class="lore-tools">
-      <button class="primary" :disabled="!currentWorldId" @click="openLore()">{{ t('addLoreEntry') }}</button>
+      <button class="success" :disabled="!currentWorldId" @click="openLore()">{{ t('addLoreEntry') }}</button>
       <input v-model="generatePrompt" :placeholder="t('generateLorePlaceholder')">
       <button @click="generateLore" :disabled="busy || !currentWorldId">{{ t('aiGenerate') }}</button>
       <button @click="exportLore" :disabled="!data?.entries?.length">{{ t('export') }}</button>
