@@ -1,52 +1,57 @@
-# DiceFrame v1.8.4
+# DiceFrame v1.9.0
 
 ## 中文
 
-这个版本修复了单人模式下反复切换行动导致掷骰卡死的问题，并优化了插件页的内容包界面：插件列表默认收起、内容包/主题插件可直接在列表上启用、内容包资源按插件分组折叠展示。同时沿用 v1.8.3 的全部功能与修复记录。
+这个版本带来了存档导入/导出与插件商店改版：对局可一键导出，也能导入为新对局继续跑，方便迁移与备份；插件商店卡片重新布局，作者、类型、评分一目了然。同时修复了换一条回复（Swipe）或回滚后重启存档丢失、手动掷骰触发词不足等问题。
+
+### 新功能
+
+- 存档导入/导出：对局可一键导出为 zip（对话历史分离保存），也可导入为全新对局继续跑，方便迁移与备份。
+- 角色头像全库选择：头像选择器新增"从所有头像中选择"，可在全部 6 套规则共 48 个内置头像中挑选，不再局限于当前规则。
+- 角色卡批量导出更安全：同名卡片自动加后缀区分，不再互相覆盖；导出保留来源与酒馆原始数据，导出→导入可无损往返。
 
 ### 修复
 
-- 修复单人模式切换行动：反复修改行动现在会替换上一版，不再堆积多条行动触发 3 条上限，也不会让未掷骰的旧检定残留、卡住后续掷骰。
+- 修复 Swipe 与回滚后存档不落盘：换回复、回滚现在会立即写入存档，重启不再丢失最近修改。
+- 修复手动掷骰难以触发：支持更多触发词（掷骰/投骰/骰子/roll/dice 等），同时避免"骰子真有趣"之类普通句子误触发。
+- 修复导入存档为新对局后对局列表不显示的问题。
 
 ### 优化
 
-- 插件列表默认收起：插件较多时页面不再被全部展开撑得过长；用户展开的插件在刷新后保持展开。
-- 内容包与主题插件可在插件列表上直接启用：新增"启用"开关，勾选即保存生效，无需再进入配置页。
-- 内容包资源按插件分组折叠展示：每个资源包一个折叠卡片，内部按角色/NPC/道具/法术/职业分组并以网格排列，修复多个资源包同时启用时页面过长、条目重叠的问题。
-
-### 自 v1.8.3 以来的完整功能（合并发布）
-
-- 检定触发改为数据驱动的多语言词表：内置 6 类意图 + 通用检定，中英文双份、覆盖 400+ 触发词；修正「观察」类动作在 d20 规则下改走感知检定。
-- 检定按规则对应骰子：d20 规则走属性检定 vs DC，CoC 走 d100 技能阈值，无骰规则不触发。
-- 独立角色库、角色头像系统、幸运改判流程、扩展插件管理等完整功能。
+- 插件系统重构：插件类型改由后端描述文件单一驱动，商店筛选、插件列表与类型表统一；插件页新增 README 文档展示与内容包一键导入，内容包启用时自动灌注全部资源，卸载时自动清理注册表；商店评分改读索引仓快照，进商店不再卡顿。
+- 角色管理页改版：卡片式网格布局，头像/名字/元信息对齐；规则徽章单独一行，长规则名自动省略并悬停显示全文。
+- UI 调整：世界书、首页、规则页主操作按钮统一为绿色，规则描述悬停可查看完整内容。
 
 ### 下载指南
 
-- **普通 Windows 用户**：下载 `DiceFrame-v1.8.4-windows-portable.zip`。
-- **源码运行用户**：下载 `DiceFrame-v1.8.4-windows.zip`。
+- **普通 Windows 用户**：下载 `DiceFrame-v1.9.0-windows-portable.zip`。
+- **源码运行用户**：下载 `DiceFrame-v1.9.0-windows.zip`。
 - `.sha256` 是更新校验文件，普通用户不需要手动下载。
 
 ## English
 
-This release fixes solo-mode action switching stalling dice checks, and improves the content-pack interface: plugin list collapses by default, content packs and themes get an enable toggle in the list, and content resources are grouped per plugin. It retains the full v1.8.3 feature and fix history.
+This release brings save import/export and a plugin-store overhaul: games can be exported in one click and imported as a brand-new game for migration or backup, and plugin store cards are redesigned with author, type and rating at a glance. It also fixes save loss after swipe/rollback, and makes manual dice prompts easier to trigger.
+
+### New Features
+
+- Save import/export: export a game as a zip (chat history stored separately) and import it as a new game for migration or backup.
+- All-library portrait picking: the portrait picker adds "Choose from all portraits", covering all 48 built-in avatars across 6 rulesets.
+- Safer batch card export: same-name cards get suffixes instead of overwriting each other; exports keep source and tavern data for lossless round trips.
 
 ### Fixes
 
-- Fixed solo-mode action switching: revising an action now replaces the previous one instead of stacking duplicates, so it no longer hits the 3-action cap or leaves stale pending dice checks that block later rolls.
+- Fixed save loss after swipe/rollback: switching replies and rolling back now persist immediately, so recent changes survive restarts.
+- Fixed manual dice prompts being hard to trigger: more trigger words (掷骰/投骰/骰子/roll/dice…) are supported, while ordinary sentences no longer false-trigger.
+- Fixed imported saves not appearing in the game list.
 
 ### Improvements
 
-- Plugin list collapses by default, so many plugins no longer stretch the page; plugins you expand stay expanded after refresh.
-- Content packs and themes can be enabled directly from the plugin list with a toggle that saves immediately.
-- Content resources are grouped by plugin in collapsible sections, with items in a responsive grid per type, fixing the overly long overlapping layout when many packs are enabled.
-
-### Full History From v1.8.3 (Included in This Release)
-
-- Data-driven multilingual check intents, "observe"-style actions resolving to Perception under d20 rules, and checks following each rule's dice system.
-- Standalone character library, character portraits, Luck-spend flow, and expanded plugin management.
+- Plugin system rework: plugin types are driven by a single backend descriptor, unifying store filters, the plugin list and the type table; plugin pages now show README docs with one-click content-pack import, enabling a content pack auto-infuses all of its resources, and uninstalling cleans up the registry; store ratings read an index-repo snapshot so the store no longer stalls.
+- Character management page: card grid layout with aligned avatar/name/metadata; rule badges sit on their own line, truncating with a hover tooltip when long.
+- UI polish: primary action buttons on the lorebook, home and rules pages are now green, and rule descriptions show full text on hover.
 
 ### Download Guide
 
-- **Most Windows users**: Download `DiceFrame-v1.8.4-windows-portable.zip`.
-- **Source package users**: Download `DiceFrame-v1.8.4-windows.zip`.
-- `.sha256` files are used for update verification and do not need to be downloaded manually.
+- **Regular Windows users**: download `DiceFrame-v1.9.0-windows-portable.zip`.
+- **Source-run users**: download `DiceFrame-v1.9.0-windows.zip`.
+- `.sha256` files are update checksums; regular users do not need to download them manually.
