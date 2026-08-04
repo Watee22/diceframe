@@ -360,8 +360,6 @@ theme/
   assets/
 ```
 
-第一阶段建议只支持 CSS 变量和静态资源，不支持任意前端组件注入。主题必须同时考虑亮色/暗色可读性。
-
 当前宿主可以通过 `contributes.theme` 或 `contributes.themes` 注册主题描述文件。启用主题插件后，可在 WebUI “设置 -> 插件 -> 主题”选择主题；选择结果保存在当前浏览器，实际生效方式是覆盖 CSS 变量。
 
 `theme/theme.json` 示例：
@@ -406,8 +404,6 @@ maps/
   scenes/
   grids/
 ```
-
-第一阶段推荐做“地图素材/地点模板包”，避免一开始就做实时协同战棋。
 
 当前宿主可以通过 `contributes.locations`、`contributes.icons`、`contributes.scenes`、`contributes.grids` 注册地图包资源。启用地图包后：
 
@@ -491,7 +487,7 @@ runtime.run()
 
 ## 8. 商店收录
 
-官方社区索引仓库为 `https://github.com/diceframe/diceframe-plugins`。作者通过 Issue 模板提交插件 ID 和公开仓库地址；机器人读取最新正式 GitHub Release，自动检查后在投稿 Issue 中给出收录结果。不再使用 PR、作者上传 ZIP、`package_url` 或 SHA-256。
+官方社区索引仓库为 `https://github.com/diceframe/diceframe-plugins`。作者通过 Issue 模板提交插件 ID 和公开仓库地址；机器人读取最新正式 GitHub Release，自动检查后在投稿 Issue 中给出收录结果。
 
 DiceFrame 安装时重新解析最新 Release，并下载它所指向的完整 Git commit 源码快照，而不是会变化的 `main` 分支。声明型插件在权限不扩大时自动更新；带入口的进程型插件只提示更新；权限或运行方式变化会暂停更新并要求重新审核。
 
