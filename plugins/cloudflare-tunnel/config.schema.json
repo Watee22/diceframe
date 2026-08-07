@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "title": "启用插件",
+      "default": false,
+      "ui": {"control": "switch", "group": "运行", "order": 1}
+    },
+    "auto_start": {
+      "type": "boolean",
+      "title": "随宿主启动自动开隧道",
+      "description": "插件启用后，DiceFrame 启动时自动开始隧道。开启后每次启动会得到新的随机公网地址。",
+      "default": false,
+      "ui": {"control": "switch", "group": "运行", "order": 10, "env": "TUNNEL_AUTO_START"}
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "cloudflare-tunnel",
+  "name": "Cloudflare 快速隧道",
+  "version": "0.1.0",
+  "description": "一键生成公网 HTTPS 访问地址（trycloudflare.com，免账号免域名），把邀请链接/Bot 桥接对外可用。",
+  "plugin_type": "tool",
+  "entrypoint": ["{python}", "{plugin_dir}/main.py"],
+  "config_schema": "config.schema.json",
+  "permissions": ["tool.execute", "process.spawn", "network.client", "plugin.data", "diceframe.http", "tunnel.publish"],
+  "min_app_version": "1.9.12",
+  "docs": "README_CN.md"
+}
