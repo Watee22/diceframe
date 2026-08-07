@@ -85,7 +85,7 @@ const {
   page, totalPages, paginatedMarketplace, goToPage,
   canUpdateFromStore, loadMarketplace, loadMirrors, installMarketPlugin,
   updateInstalledPlugin, uninstallPlugin, addMirror, saveMirror,
-  deleteMirror, testMirror, openUrl, isNewerVersion, marketItemHasNewerVersion,
+  deleteMirror, testMirror, openUrl, marketItemHasNewerVersion,
 } = usePluginMarketplace(busy, refreshPluginSurfaces, typeFilter, onUninstalled)
 const {
   plugins, filteredPlugins, expandedPluginNames, loading, installFile, overwriteInstall,
@@ -197,6 +197,7 @@ onMounted(async () => {
                   {{ p.name }}
                   <NTag v-if="p.version" size="small" class="plugin-version">{{ t('installedVersion', { version: p.version }) }}</NTag>
                   <NTag v-if="canUpdateFromStore(p.id, p.version)" type="warning" size="small">{{ t('updateAvailable') }}</NTag>
+                  <NTag v-if="p.needs_core_update" type="warning" size="small">{{ t('pluginNeedsCoreUpdate', { version: p.min_app_version || '' }) }}</NTag>
                 </h3>
                 <p class="muted">{{ p.description }}</p>
               </div>
@@ -364,6 +365,7 @@ onMounted(async () => {
             </p>
             <p v-if="item.support?.summary" class="muted market-permissions">{{ item.support.summary }}</p>
             <p v-if="item.verification_error" class="market-warning">{{ item.verification_error }}</p>
+            <p v-else-if="item.needs_core_update" class="market-warning">{{ t('pluginNeedsCoreUpdate', { version: item.min_app_version || '' }) }}</p>
             <div class="market-actions">
               <NButton v-if="item.installed && !marketItemHasNewerVersion(item)" secondary disabled>{{ t('installed') }}</NButton>
               <NButton v-else type="primary" :disabled="item.installable === false" :loading="busy === `market:${item.id}`" @click="installMarketPlugin(item)">

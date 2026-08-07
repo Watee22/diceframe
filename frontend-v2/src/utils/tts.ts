@@ -28,7 +28,6 @@ export function setTtsRate(rate: number): void {
 }
 
 let voices: SpeechSynthesisVoice[] = []
-let voicesLoaded = false
 
 function loadVoices(): void {
   if (!('speechSynthesis' in window)) return
@@ -41,7 +40,6 @@ if (typeof window !== 'undefined') {
   if ('speechSynthesis' in window) {
     window.speechSynthesis.addEventListener('voiceschanged', () => {
       voices = window.speechSynthesis.getVoices()
-      voicesLoaded = true
     })
   }
 }
