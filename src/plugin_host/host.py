@@ -29,6 +29,7 @@ from .descriptors import (
 )
 from .marketplace import PluginMarketplace
 from .mirrors import MirrorManager
+from src.version import needs_core_update
 from .package_limits import (
     MAX_PLUGIN_ARCHIVE_FILES,
     MAX_PLUGIN_FILE_BYTES,
@@ -61,6 +62,8 @@ _MAX_BRIDGE_IMAGE_BYTES = 10 * 1024 * 1024
 _ALLOWED_CONTROLS = {"switch", "text", "secret", "number", "select", "string-list"}
 _RESTART_BASE_DELAY = 3.0
 _RESTART_MAX_DELAY = 300.0
+
+
 _RESTART_STABLE_SECONDS = 10.0
 # 插件自动更新总开关。默认关闭：商店只提醒有新版，用户手动点更新。
 # 保留自动更新的实现骨架，将来要恢复时把此值改为 True 即可。
@@ -114,11 +117,13 @@ async def _rename_dir_with_retry(src: Path, dst: Path, *, attempts: int = 3, del
 
 
 class PluginHost:
-    def __init__(self, plugins_dir: Path, data_dir: Path, *, builtin_dir: Path | None = None, base_env: dict[str, str] | None = None) -> None:
+    def __init__(self, plugins_dir: Path, data_dir: Path, *, builtin_dir: Path | None = None, base_env: dict[str, str] | None = None, on_plugin_stopped=None) -> None:
         self.builtin_dir = builtin_dir
         self.plugins_dir = plugins_dir
         self.data_dir = data_dir
         self.base_env = base_env or {}
+        # 接线层注入：插件被真正停止/卸载时（keep_enabled=False）回调，用于释放隧道发布。
+        self._on_plugin_stopped = on_plugin_stopped
         self.plugins: dict[str, PluginRuntime] = {}
         self.logger = logging.getLogger("trpg.plugins")
         self.mirrors = MirrorManager(self.data_dir / "_marketplace" / "mirrors.json")
@@ -176,6 +181,7 @@ class PluginHost:
             if self._sensitive(field_schema):
                 value = runtime.secrets.get(key, "")
                 public_config[key] = {"configured": bool(value), "masked": f"***{value[-4:]}" if value else ""}
+        min_app_version = str(runtime.manifest.get("min_app_version") or "").strip()
         return {
             "id": plugin_id,
             "name": runtime.manifest.get("name", plugin_id),
@@ -193,6 +199,8 @@ class PluginHost:
             "capabilities": runtime.manifest.get("capabilities", []),
             "permissions": self._plugin_permissions(runtime),
             "permission_details": self._plugin_permission_details(runtime),
+            "min_app_version": min_app_version,
+            "needs_core_update": needs_core_update(min_app_version),
             "tools": [dict(tool) for tool in runtime.tools],
             "bridge_extensions": [dict(extension) for extension in runtime.bridge_extensions],
             "contributions": [item.to_dict() for item in self.contributions.list() if item.plugin_id == plugin_id],
@@ -478,7 +486,7 @@ class PluginHost:
             try:
                 if target_dir.exists():
                     if plugin_id in self.plugins:
-                        await self.stop(plugin_id)
+                        await self.stop(plugin_id, keep_enabled=True)
                     await _rename_dir_with_retry(target_dir, backup_dir)
                 await _rename_dir_with_retry(staging_dir, target_dir)
                 if backup_dir.exists():
@@ -720,6 +728,10 @@ class PluginHost:
             runtime.status = "running"
             self.logger.info("插件 %s 已启动，PID=%s", plugin_id, runtime.process.pid)
             runtime.monitor_task = asyncio.create_task(self._monitor_process(plugin_id, runtime.process))
+            # 启动成功 = 用户要开；持久化 enabled，重启后保持开启状态。
+            if not runtime.config.get("enabled"):
+                runtime.config["enabled"] = True
+                self._save_config(plugin_id, runtime)
         except Exception as exc:
             process = runtime.process
             if process and process.returncode is None:
@@ -790,8 +802,13 @@ class PluginHost:
                     return {"plugin_id": plugin_id, "permissions": self._plugin_permissions(runtime)}
         return None
 
-    async def stop(self, plugin_id: str) -> None:
+    async def stop(self, plugin_id: str, *, keep_enabled: bool = False) -> None:
         runtime = self._require(plugin_id)
+        # 用户主动关闭插件时，把 enabled 置 false 并保存，重启后不再自动拉起。
+        # restart 用 keep_enabled=True 保留用户"开着"的意图，仅重启进程。
+        if not keep_enabled and runtime.config.get("enabled"):
+            runtime.config["enabled"] = False
+            self._save_config(plugin_id, runtime)
         monitor = runtime.monitor_task
         runtime.monitor_task = None
         if monitor and not monitor.done():
@@ -812,6 +829,13 @@ class PluginHost:
         runtime.status = self._status_for_enabled(runtime)
         if runtime.status != "active":
             self.contributions.clear_plugin(plugin_id)
+        # 用户主动停止/卸载（keep_enabled=False）时通知接线层；
+        # restart/cleanup/更新走 keep_enabled=True 不触发，插件会重新拉起并重新发布。
+        if not keep_enabled and self._on_plugin_stopped is not None:
+            try:
+                await self._on_plugin_stopped(plugin_id)
+            except Exception:
+                self.logger.exception("插件停止回调失败: %s", plugin_id)
 
     async def _fail_rpc_runtime(self, runtime: PluginRuntime, error: str) -> None:
         monitor = runtime.monitor_task
@@ -834,14 +858,15 @@ class PluginHost:
         runtime.error = error
 
     async def restart(self, plugin_id: str) -> None:
-        await self.stop(plugin_id)
+        await self.stop(plugin_id, keep_enabled=True)
         await self.start(plugin_id)
 
     async def cleanup(self) -> None:
         if self._auto_update_task and not self._auto_update_task.done():
             self._auto_update_task.cancel()
+        # 宿主关闭不改变插件 enabled 状态，重启后按用户意图恢复。
         for plugin_id in list(self.plugins):
-            await self.stop(plugin_id)
+            await self.stop(plugin_id, keep_enabled=True)
 
     async def rescan(self) -> list[dict[str, Any]]:
         await self.cleanup()
@@ -1136,7 +1161,10 @@ class PluginHost:
             raise ValueError("permissions 必须是字符串数组")
         unknown = sorted({item.strip() for item in permissions} - set(_ALLOWED_PERMISSIONS))
         if unknown:
-            raise ValueError(f"未知插件权限：{', '.join(unknown)}")
+            raise ValueError(
+                f"未知插件权限：{', '.join(unknown)}"
+                "（该权限可能来自更新版本的 DiceFrame，请升级后重试）"
+            )
 
     @staticmethod
     def _validate_runtime_permissions(manifest: dict[str, Any], schema: dict[str, Any]) -> None:

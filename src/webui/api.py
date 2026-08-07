@@ -15,7 +15,7 @@ from src.lorebook.store import LorebookStore
 from src.memory.delta import MemoryStore
 from src.rules.rule_system import RuleSystem
 from src.engine.world_template import load_world_template
-from src.webui.services import avatars, bot_access, bot_extensions, character_cards, characters, generation, games, logs, maps, memory, tavern, turns, worlds, rules, plugins, system
+from src.webui.services import avatars, bot_access, bot_extensions, character_cards, characters, generation, games, logs, maps, memory, tavern, turns, worlds, rules, plugins, system, tunnel
 from src.webui.services._common import _parse_game_key, _is_safe_world_id
 
 logger = logging.getLogger("trpg")
@@ -118,6 +118,21 @@ class WebAPI:
 
     async def rescan_plugins(self) -> dict[str, Any]:
         return await plugins.rescan_plugins(self)
+
+    def publish_tunnel_url(self, plugin_id: str, url: str) -> dict[str, Any]:
+        return tunnel.publish_tunnel_url(self, plugin_id, url)
+
+    def release_tunnel_url(self, plugin_id: str) -> dict[str, Any]:
+        return tunnel.release_tunnel_url(self, plugin_id)
+
+    def tunnel_status(self) -> dict[str, Any]:
+        return tunnel.tunnel_status(self)
+
+    def authenticate_plugin_token(self, token: str) -> dict[str, Any] | None:
+        """校验插件进程内部 Token，返回插件身份（复用 plugin_host）。"""
+        if not self._plugins:
+            return None
+        return self._plugins.authenticate_api_token(token)
 
     def plugin_detail(self, plugin_id: str) -> dict[str, Any]:
         return plugins.plugin_detail(self, plugin_id)

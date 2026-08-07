@@ -50,6 +50,7 @@ from src.webui.routes.pages import add_response_security_headers, register_pages
 from src.webui.login_audit import LOGIN_AUDIT_KEY, LoginAuditStore
 from src.webui.routes.bot import register_bot
 from src.webui.routes.plugins import register_plugins
+from src.webui.routes.tunnel import register_tunnel
 from src.webui.routes.system import register_system
 from src.webui.routes.updater import register_updater
 from src.webui.services import updater as updater_svc
@@ -428,6 +429,8 @@ def _make_api(subsystems: TRPGSubsystems, plugin_host=None, config: dict | None 
     )
     # 配置状态引用就地更新，始终指向最新值（更新频道等运行时配置）
     api._config_state = STATE
+    # 持久化回调：service 层更新 public_base_url 后走标准写盘路径（见 services/tunnel.py）
+    api._save_config = save_config
     return api
 
 
@@ -496,9 +499,15 @@ async def on_startup(app: web.Application) -> None:
     _ensure_bot_token()
     subsystems = _build_subsystems()
     app["subsystems"] = subsystems
+    async def _on_plugin_stopped(plugin_id: str) -> None:
+        # 插件被真正停止/卸载时，若它是当前隧道 publisher 则恢复 public_base_url（§3.5）。
+        api = app.get("api")
+        if api is not None:
+            api.release_tunnel_url(plugin_id)
+
     plugin_host = PluginHost(DATA_DIR / "plugin-packages", DATA_DIR / "plugins", builtin_dir=ROOT / "plugins", base_env={
         "TRPG_API_BASE": f"http://127.0.0.1:{PORT}",
-    })
+    }, on_plugin_stopped=_on_plugin_stopped)
     # 启动时补迁：旧布局便携版根 app/plugins/ 里可能还有用户插件（更新器迁移由旧版本
     # 执行，覆盖不到本次升级），新版本首次启动时由自己补搬一次到 data/plugin-packages/。
     install_root = os.getenv("TRPG_INSTALL_ROOT", "").strip()
@@ -1053,6 +1062,7 @@ def register_routes(application: web.Application) -> None:
     register_games(application)
     register_bot(application)
     register_plugins(application)
+    register_tunnel(application)
     register_system(application)
     register_updater(application)
     # worlds / lorebook

@@ -19,6 +19,7 @@ PERMISSION_DETAILS = {
     "map.assets": "注册地图地点和素材资源",
     "tool.execute": "注册并执行结构化工具调用",
     "bot.extend": "扩展 Bot Bridge 命令、消息处理和展示",
+    "tunnel.publish": "向核心上报外网公开访问地址",
 }
 
 
