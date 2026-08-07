@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -167,6 +168,32 @@ def copy_tree(src: Path, dst: Path) -> None:
             copy_file(path, target)
 
 
+CLOUDFLARED_VERSION = "2026.7.3"
+
+
+def download_cloudflared(package_dir: Path) -> None:
+    """下载 cloudflared 二进制打进包内，让外网接入插件离线可用。
+
+    按构建平台选择资产：portable/source 包在 Windows 构建 -> windows-amd64；
+    仅 linux-amd64 留给未来 Linux/Docker 构建。失败不阻断打包（插件会运行时下载）。
+    """
+    target_dir = package_dir / "cloudflared"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        asset = "cloudflared-windows-amd64.exe"
+        target = target_dir / "cloudflared.exe"
+    else:
+        asset = "cloudflared-linux-amd64"
+        target = target_dir / "cloudflared"
+    url = f"https://github.com/cloudflare/cloudflared/releases/download/{CLOUDFLARED_VERSION}/{asset}"
+    try:
+        print(f"Downloading cloudflared {CLOUDFLARED_VERSION} ...")
+        urllib.request.urlretrieve(url, target)
+        if os.name != "nt":
+            target.chmod(0o755)
+        print(f"cloudflared saved to {target}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"Warning: cloudflared download failed, plugin will fetch at runtime: {exc}")
 def prepare_package_tree(package_dir: Path) -> None:
     if package_dir.exists():
         shutil.rmtree(package_dir)
@@ -183,6 +210,8 @@ def prepare_package_tree(package_dir: Path) -> None:
         copy_file(ROOT / "frontend-v2" / rel, frontend_dir / rel)
     for rel in FRONTEND_DIRS:
         copy_tree(ROOT / "frontend-v2" / rel, frontend_dir / rel)
+
+    download_cloudflared(package_dir)
 
 
 def build_frontend(package_dir: Path) -> None:
