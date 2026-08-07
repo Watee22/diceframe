@@ -125,7 +125,7 @@ Process plugins inherit only a small operating-system variable allowlist. A plug
 
 The host creates, restarts, and manages the **plugin process** (exponential backoff restart, reset after stability). Each plugin must handle two things itself to avoid becoming a zombie or leaking child processes:
 
-1. **Watch the parent process**: the host injects `TRPG_PARENT_PID` (the main process PID). When the host exits, the plugin should end itself immediately; otherwise it is left as an orphan. The `cloudflare-tunnel` plugin ships a self-contained `parent_watch.py` reference implementation (cross-platform `pid_exists` + `start_parent_watch`); process plugins can copy it:
+1. **Watch the parent process**: the host injects `TRPG_PARENT_PID` (the main process PID). When the host exits, the plugin should end itself immediately; otherwise it is left as an orphan. See the independently-distributed `cloudflare-tunnel` plugin (repo [`diceframe/cloudflare-tunnel`](https://github.com/diceframe/cloudflare-tunnel)) for a self-contained `parent_watch.py` reference implementation (cross-platform `pid_exists` + `start_parent_watch`); process plugins can copy it:
 
    ```python
    # self-contained in the plugin, not an SDK public export

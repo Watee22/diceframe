@@ -185,7 +185,7 @@ tool
 
 宿主负责创建、重启和管理**插件进程**（指数退避重启、稳定后复位）。插件自身必须负责两件事，避免成为僵尸或残留子进程：
 
-1. **监控父进程存活**：宿主为插件注入 `TRPG_PARENT_PID`（主进程 PID）。宿主进程退出后，插件应立即结束（自杀），否则会残留为孤儿进程。`cloudflare-tunnel` 插件内置了 `parent_watch.py` 参考实现（跨平台 `pid_exists` + `start_parent_watch`），进程型插件可参照复制：
+1. **监控父进程存活**：宿主为插件注入 `TRPG_PARENT_PID`（主进程 PID）。宿主进程退出后，插件应立即结束（自杀），否则会残留为孤儿进程。可参照独立分发的 `cloudflare-tunnel` 插件（仓库 [`diceframe/cloudflare-tunnel`](https://github.com/diceframe/cloudflare-tunnel)）内置的 `parent_watch.py` 参考实现（跨平台 `pid_exists` + `start_parent_watch`），进程型插件可复制：
 
    ```python
    # 插件内 self-contained 实现，不依赖 SDK 公共导出
