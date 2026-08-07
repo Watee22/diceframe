@@ -181,7 +181,28 @@ tool
 
 当前还没有完整代码沙箱。带 `entrypoint` 的进程型插件本质上会在本机启动独立进程，所以只应安装可信来源的插件；环境变量隔离和权限声明能减少误暴露，但不等于操作系统级沙箱。
 
-## 6.2 config.schema.json
+## 6.2 进程型插件生命周期要求
+
+宿主负责创建、重启和管理**插件进程**（指数退避重启、稳定后复位）。插件自身必须负责两件事，避免成为僵尸或残留子进程：
+
+1. **监控父进程存活**：宿主为插件注入 `TRPG_PARENT_PID`（主进程 PID）。宿主进程退出后，插件应立即结束（自杀），否则会残留为孤儿进程。`cloudflare-tunnel` 插件内置了 `parent_watch.py` 参考实现（跨平台 `pid_exists` + `start_parent_watch`），进程型插件可参照复制：
+
+   ```python
+   # 插件内 self-contained 实现，不依赖 SDK 公共导出
+   from parent_watch import start_parent_watch
+
+   start_parent_watch(on_exit=lambda: cleanup_your_subprocess())
+   ```
+
+   `on_exit` 是宿主退出时的清理回调（如 kill 插件 spawn 的子进程）。
+
+2. **退出时清理子进程**：插件 spawn 的任何子进程（如外部二进制），必须在插件退出时终止，防止残留。建议在插件主循环结束后统一 kill，并配合 `start_parent_watch` 的 `on_exit` 兜底。
+
+宿主的插件进程重启（`_monitor_process`）与插件的子进程自愈是两个层面：插件进程崩溃由宿主拉起；插件内部自己 spawn 的子进程崩溃，由插件自己负责（可自行实现重试，指数退避上限建议 60s）。
+
+规范边界：重连策略、业务退避等因插件而异，不强制统一；只有"监控父进程 + 退出清理"是每个进程型插件都应遵守的底线。
+
+## 6.3 config.schema.json
 
 配置 schema 使用受限 JSON Schema 子集：
 

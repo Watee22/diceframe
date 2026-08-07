@@ -1,6 +1,9 @@
 # data/ 全部为运行时数据与 secrets（config/access_token/secrets/*.db/saves/plugins/sessions/bot/debug/tmp_cards 等），不入库
 data/
 
+# 插件运行时产物（cloudflared 二进制由 build_release 构建时打进主包 cloudflared/，此处 dev 副本不入库）
+plugins/cloudflare-tunnel/runtime/
+
 # Python
 __pycache__/
 *.pyc

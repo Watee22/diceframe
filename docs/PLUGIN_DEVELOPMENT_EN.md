@@ -121,7 +121,28 @@ The host validates archive paths and budgets, identity, type, schema, entrypoint
 
 Process plugins inherit only a small operating-system variable allowlist. A plugin declaring `diceframe.http` receives a DiceFrame URL and a host-generated token that belongs only to that plugin. Authors and users do not configure this token. The global Bot API token in Settings is reserved for external programs that are not managed as DiceFrame plugins. There is no complete OS sandbox: an entrypoint still executes as the same OS user as DiceFrame.
 
-## 6.2 config.schema.json
+## 6.2 Process Plugin Lifecycle Requirements
+
+The host creates, restarts, and manages the **plugin process** (exponential backoff restart, reset after stability). Each plugin must handle two things itself to avoid becoming a zombie or leaking child processes:
+
+1. **Watch the parent process**: the host injects `TRPG_PARENT_PID` (the main process PID). When the host exits, the plugin should end itself immediately; otherwise it is left as an orphan. The `cloudflare-tunnel` plugin ships a self-contained `parent_watch.py` reference implementation (cross-platform `pid_exists` + `start_parent_watch`); process plugins can copy it:
+
+   ```python
+   # self-contained in the plugin, not an SDK public export
+   from parent_watch import start_parent_watch
+
+   start_parent_watch(on_exit=lambda: cleanup_your_subprocess())
+   ```
+
+   `on_exit` is the cleanup callback when the host exits (for example, killing subprocesses the plugin spawned).
+
+2. **Clean up child processes on exit**: any subprocess the plugin spawns (such as an external binary) must be terminated when the plugin exits, to avoid leftovers. Kill them after the plugin main loop finishes and provide a fallback via `start_parent_watch(on_exit=...)`.
+
+The host's plugin-process restart (`_monitor_process`) and the plugin's own subprocess recovery are separate layers: a crashed plugin process is restarted by the host; a subprocess the plugin spawned and crashed is the plugin's own responsibility (a retry with exponential backoff capped at 60s is suggested).
+
+Boundary of the convention: reconnect strategies and business-specific backoff are plugin-specific and not standardized. Only "watch the parent process + clean up on exit" is the baseline every process plugin should follow.
+
+## 6.3 config.schema.json
 
 The restricted schema uses an object root with `properties`. Supported field types are `boolean`, `string`, `number`, `integer`, and `array`; controls are `switch`, `text`, `secret`, `number`, `select`, and `string-list`.
 

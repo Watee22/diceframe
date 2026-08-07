@@ -1799,3 +1799,68 @@ async def test_builtin_plugin_cannot_be_uninstalled(tmp_path):
     with pytest.raises(ValueError, match="内置插件不可卸载"):
         await host.uninstall("built-in")
     await asyncio.sleep(0.05)
+
+
+@pytest.mark.asyncio
+async def test_stop_keep_enabled_false_invokes_on_plugin_stopped(tmp_path):
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, "tun")
+    stopped: list[str] = []
+
+    async def on_stopped(plugin_id: str) -> None:
+        stopped.append(plugin_id)
+
+    host = PluginHost(plugins, tmp_path / "data", on_plugin_stopped=on_stopped)
+    host.discover()
+    # 用户主动停止/卸载（keep_enabled=False）应通知接线层释放隧道发布
+    await host.stop("tun", keep_enabled=False)
+    assert stopped == ["tun"]
+
+
+@pytest.mark.asyncio
+async def test_stop_keep_enabled_true_skips_on_plugin_stopped(tmp_path):
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, "tun")
+    stopped: list[str] = []
+
+    async def on_stopped(plugin_id: str) -> None:
+        stopped.append(plugin_id)
+
+    host = PluginHost(plugins, tmp_path / "data", on_plugin_stopped=on_stopped)
+    host.discover()
+    # restart/cleanup/更新走 keep_enabled=True，不触发 release（插件会重新拉起并重新发布）
+    await host.stop("tun", keep_enabled=True)
+    assert stopped == []
+
+
+def test_public_detail_exposes_min_app_version_and_needs_core_update(tmp_path):
+    """方案A：public_detail 透传 min_app_version + needs_core_update（展示用，不构成门控）。"""
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, "tunnel", manifest_extra={"min_app_version": "99.0.0"})
+    host = PluginHost(plugins, tmp_path / "data")
+    host.discover()
+    detail = host.public_detail("tunnel")
+    assert detail["min_app_version"] == "99.0.0"
+    assert detail["needs_core_update"] is True
+
+
+def test_public_detail_no_min_app_version_is_fine(tmp_path):
+    plugins = tmp_path / "plugins"
+    write_plugin(plugins, "plain")
+    host = PluginHost(plugins, tmp_path / "data")
+    host.discover()
+    detail = host.public_detail("plain")
+    assert detail["min_app_version"] == ""
+    assert detail["needs_core_update"] is False
+
+
+def test_version_below_semantics():
+    from src.version import version_below
+    assert version_below("1.9.13", "1.9.12") is True
+    assert version_below("1.9.12", "1.9.12-beta.1") is False  # beta 视为满足同主版本
+    assert version_below("1.9.12", "1.9.12") is False
+    assert version_below("1.9.12", "1.10.0") is False
+    assert version_below("", "1.9.12") is False
+    assert version_below("2.0.0", "1.9.12") is True
+
+
