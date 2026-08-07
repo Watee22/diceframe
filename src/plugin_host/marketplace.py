@@ -20,6 +20,7 @@ from .mirrors import (
 from .package_limits import MAX_PLUGIN_PACKAGE_BYTES
 from .policy import effective_plugin_permissions, plugin_risk_level
 from .support import plugin_type_support
+from src.version import needs_core_update
 
 @dataclass(frozen=True)
 class MarketplaceSource:
@@ -168,6 +169,12 @@ def _string_list(value: Any) -> list[str]:
     return sorted({str(item).strip() for item in value if str(item).strip()})
 
 
+def _min_app_version(item: Any, manifest: dict) -> str:
+    """索引条目顶层审核基线优先，manifest 兜底；两侧都取，保证展示与 needs_core_update 同源。"""
+    return str((item.get("min_app_version") if isinstance(item, dict) else None)
+               or manifest.get("min_app_version") or "").strip()
+
+
 def _latest_field(item: Any) -> dict[str, Any]:
     """透传索引同步写入的最新 Release 信息；无则返回空对象。
 
@@ -251,6 +258,8 @@ def _normalize_market_item(item: Any) -> dict[str, Any] | None:
         "installable": installable,
         "verification_error": verification_error,
         "capabilities": _string_list(manifest.get("capabilities") or item.get("capabilities")),
+        "min_app_version": _min_app_version(item, manifest),
+        "needs_core_update": needs_core_update(_min_app_version(item, manifest)),
         "docs": str(manifest.get("docs") or item.get("docs") or urls.get("documentation") or ""),
         "homepage": str(item.get("homepage") or urls.get("homepage") or repository_url),
         "latest": _latest_field(item),
