@@ -131,6 +131,7 @@ export function usePluginMarketplace(
 
   async function installMarketPlugin(item: PluginMarketplaceItem) {
     if (item.risk_level === 'unrestricted-process' && !window.confirm(t('confirmProcessPluginInstall', { name: item.name }))) return
+    if (item.needs_core_update && !window.confirm(t('confirmCoreUpgrade', { name: item.name, version: item.min_app_version || '' }))) return
     busy.value = `market:${item.id}`
     try {
       await pluginApi.installMarketplace(item.id, Boolean(item.installed))
@@ -146,6 +147,7 @@ export function usePluginMarketplace(
   async function updateInstalledPlugin(plugin: PluginInfo) {
     const marketItem = marketplace.value.find(item => item.id === plugin.id)
     if (marketItem?.risk_level === 'unrestricted-process' && !window.confirm(t('confirmProcessPluginUpdate', { name: plugin.name }))) return
+    if (marketItem?.needs_core_update && !window.confirm(t('confirmCoreUpgrade', { name: plugin.name, version: marketItem.min_app_version || '' }))) return
     busy.value = `${plugin.id}:update`
     try {
       await pluginApi.update(plugin.id)

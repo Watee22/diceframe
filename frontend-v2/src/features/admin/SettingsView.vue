@@ -5,13 +5,12 @@ import { NButton, NInput, NInputNumber, NSwitch, NTag, NIcon, NCollapse, NCollap
 import {
   ServerOutline, CubeOutline, CloudDownloadOutline, ExtensionPuzzleOutline,
   LockClosedOutline, OptionsOutline, InformationCircleOutline, ShareSocialOutline,
-  KeyOutline, CopyOutline, EyeOutline, RefreshOutline, GlobeOutline,
+  KeyOutline, CopyOutline, EyeOutline, RefreshOutline,
 } from '@vicons/ionicons5'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
-import { useTunnel } from '@/composables/useTunnel'
 import { shouldAutoDownloadUpdate, updateStateForVersion, useUpdater } from '@/composables/useUpdater'
 import { useLocale } from '@/composables/useLocale'
 import { ttsRate, setTtsRate } from '@/utils/tts'
@@ -25,7 +24,7 @@ import HelpButton from '@/components/common/HelpButton.vue'
 import PluginSettings from '@/features/plugins/PluginSettings.vue'
 import { copyToClipboard } from '@/utils/clipboard'
 
-type SectionId = 'api' | 'memory' | 'network' | 'sharing' | 'tunnel' | 'botapi' | 'plugins' | 'access' | 'advanced' | 'about'
+type SectionId = 'api' | 'memory' | 'network' | 'sharing' | 'botapi' | 'plugins' | 'access' | 'advanced' | 'about'
 type StatusTone = 'default' | 'success' | 'warning' | 'error' | 'info'
 type UpdatePackageKind = 'source' | 'portable'
 type SystemStatusItem = { label: string; value: string; detail: string; tone: StatusTone }
@@ -38,28 +37,6 @@ const { confirm } = useConfirm()
 const { updateInfo, updateChecking, checkForUpdates } = useUpdateCheck()
 const { updateStatus, reloadCountdown, downloadPercent, startDownload, applyUpdate, refreshStatus, isUpdateBusy } = useUpdater()
 const { t } = useLocale()
-const {
-  status: tunnelStatus, starting: tunnelStarting, error: tunnelError,
-  active: tunnelActive, providers: tunnelProviders, linkUpdated: tunnelLinkUpdated,
-  enable: enableTunnel, stop: stopTunnel,
-} = useTunnel()
-const hasAccessPassword = computed(() => Boolean(store.config.access_password?.configured))
-
-async function onTunnelEnable(pluginId: string) {
-  if (!hasAccessPassword.value) { toast.error(t('tunnelNeedPassword')); return }
-  await enableTunnel(pluginId)
-  if (tunnelError.value) toast.error(tunnelError.value)
-}
-async function onTunnelStop(pluginId: string) {
-  await stopTunnel(pluginId)
-  if (tunnelError.value) toast.error(tunnelError.value)
-}
-async function onCopyTunnelLink() {
-  const url = tunnelStatus.value?.url
-  if (!url) return
-  await copyToClipboard(url)
-  toast.success(t('tunnelLinkCopied'))
-}
 
 const updateChannel = computed(() => store.config?.update_channel === 'preview' ? 'preview' : 'stable')
 async function toggleUpdateChannel(enabled: boolean) {
@@ -89,7 +66,6 @@ const sections: SettingsSection[] = [
   { id: 'memory', labelKey: 'settingsSectionMemory', icon: CubeOutline },
   { id: 'network', labelKey: 'settingsSectionNetwork', icon: CloudDownloadOutline },
   { id: 'sharing', labelKey: 'settingsSectionSharing', icon: ShareSocialOutline },
-  { id: 'tunnel', labelKey: 'tunnelTitle', icon: GlobeOutline },
   { id: 'botapi', labelKey: 'settingsSectionBotApi', icon: KeyOutline },
   { id: 'plugins', labelKey: 'settingsSectionPlugins', icon: ExtensionPuzzleOutline },
   { id: 'access', labelKey: 'settingsSectionAccess', icon: LockClosedOutline },
@@ -656,46 +632,6 @@ function redownloadUpdatePackage() {
             <div class="actions-row">
               <NButton type="primary" @click="save(['public_base_url'])">{{ t('saveSharingAddress') }}</NButton>
             </div>
-          </div>
-
-          <div v-show="section === 'tunnel'" class="settings-pane">
-            <h3>{{ t('tunnelTitle') }}</h3>
-            <p class="muted">{{ t('tunnelHelp') }}</p>
-            <section class="settings-group-card">
-              <div v-if="!hasAccessPassword" class="form-row">
-                <p class="form-hint">{{ t('tunnelNeedPassword') }}</p>
-              </div>
-              <div v-if="!tunnelProviders.length" class="form-row">
-                <p class="form-hint">{{ t('tunnelNoProvider') }}</p>
-              </div>
-              <div v-for="p in tunnelProviders" :key="p.plugin_id" class="form-row">
-                <label>{{ p.name }}</label>
-                <div class="switch-inline">
-                  <NTag v-if="p.running" type="success" size="small">{{ t('tunnelActive') }}</NTag>
-                  <NTag v-else size="small">{{ t('tunnelIdle') }}</NTag>
-                  <NTag v-if="p.needs_core_update" type="warning" size="small">{{ t('pluginNeedsCoreUpdate', { version: p.min_app_version || '' }) }}</NTag>
-                  <NButton v-if="!tunnelActive" type="primary" size="small" :loading="tunnelStarting" :disabled="!hasAccessPassword" @click="onTunnelEnable(p.plugin_id)">{{ t('tunnelEnable') }}</NButton>
-                  <NButton v-else size="small" :loading="tunnelStarting" @click="onTunnelStop(p.plugin_id)">{{ t('tunnelStop') }}</NButton>
-                </div>
-              </div>
-              <div v-if="tunnelStarting && !tunnelActive" class="form-row">
-                <p class="muted">{{ t('tunnelStarting') }}</p>
-              </div>
-              <div v-if="tunnelActive && tunnelStatus?.url" class="form-row">
-                <label>{{ t('tunnelActive') }}</label>
-                <NInput :value="tunnelStatus.url" readonly />
-                <div class="actions-row">
-                  <NButton @click="onCopyTunnelLink">
-                    <template #icon><NIcon :component="CopyOutline" /></template>
-                    {{ t('tunnelCopyLink') }}
-                  </NButton>
-                </div>
-                <p v-if="tunnelLinkUpdated" class="form-hint">{{ t('tunnelLinkUpdated') }}</p>
-              </div>
-              <div v-if="tunnelError" class="form-row">
-                <p class="form-hint">{{ t('tunnelError') }}: {{ tunnelError }}</p>
-              </div>
-            </section>
           </div>
 
           <div v-show="section === 'botapi'" class="settings-pane">

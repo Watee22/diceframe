@@ -679,6 +679,7 @@ export interface PluginInfo {
   permission_details?: Array<{ id: string; description?: string }>
   min_app_version?: string
   needs_core_update?: boolean
+  tool_ui?: string
   tools?: PluginToolDescriptor[]
   contributions?: PluginContribution[]
   docs?: string
@@ -691,6 +692,7 @@ export interface PluginToolDescriptor {
   title?: string
   description?: string
   input_schema: JsonObject
+  tool_ui?: string
 }
 
 export interface PluginToolsResponse {
@@ -789,6 +791,7 @@ export interface PluginMarketplaceItem {
   tags?: string[]
   capabilities?: string[]
   permissions?: string[]
+  tool_ui?: string
   min_app_version?: string
   needs_core_update?: boolean
   docs?: string

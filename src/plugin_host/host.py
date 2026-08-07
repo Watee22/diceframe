@@ -201,6 +201,7 @@ class PluginHost:
             "permission_details": self._plugin_permission_details(runtime),
             "min_app_version": min_app_version,
             "needs_core_update": needs_core_update(min_app_version),
+            "tool_ui": str(runtime.manifest.get("tool_ui") or "").strip(),
             "tools": [dict(tool) for tool in runtime.tools],
             "bridge_extensions": [dict(extension) for extension in runtime.bridge_extensions],
             "contributions": [item.to_dict() for item in self.contributions.list() if item.plugin_id == plugin_id],
@@ -220,6 +221,7 @@ class PluginHost:
                     **descriptor,
                     "plugin_id": plugin_id,
                     "plugin_name": str(runtime.manifest.get("name") or plugin_id),
+                    "tool_ui": str(runtime.manifest.get("tool_ui") or "").strip(),
                 })
         return tools
 
