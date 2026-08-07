@@ -96,7 +96,23 @@ SakuraFrp 官方要求通过 TCP 隧道转发 HTTP 网页时选择非内地节�
 
 Cloudflare Tunnel 可在免费套餐中使用，通过主动建立的隧道把域名指向本地服务，不要求公网 IP，也不需要在路由器上开放入站端口。它更适合已经有域名、希望长期保留固定 HTTPS 地址的 GM。创建正式隧道后，把 Public Hostname 的服务地址指向 `http://127.0.0.1:18000`；Docker 默认部署则指向实际可访问的 `9876` 端口。具体步骤见 [Cloudflare Tunnel 官方文档](https://developers.cloudflare.com/tunnel/)。
 
-不要把无需账号、会生成随机 `trycloudflare.com` 地址的 Quick Tunnel 当作 DiceFrame 的正式联机方案。Cloudflare 官方说明 Quick Tunnel 不支持 Server-Sent Events，而 DiceFrame 用它实时同步剧情和游戏状态。
+### Cloudflare 快速隧道插件（cloudflare-tunnel）
+
+> **需 DiceFrame 1.9.12 及以上。**
+
+不想配置域名和 Cloudflare 账号时，可以直接在插件商店安装 **Cloudflare 快速隧道** 插件，一键生成一个免账号、免域名的 `https://xxx.trycloudflare.com` 公网地址，并自动写入分享链接。
+
+1. 确认 DiceFrame 版本 ≥ 1.9.12（低于此版本无法安装/运行，商店卡会提示）。
+2. 打开"设置 → 插件 → 插件商店"，安装 **Cloudflare 快速隧道**，并在"已安装插件"中启用。
+3. 打开 **"插件 → 工具"** 页，在外网接入卡片点击 **"一键启用"**（或开启插件的"随宿主启动自动开隧道"）。
+4. 等待约 30~60 秒，卡片会显示公网地址；该地址会自动同步到邀请链接，外部玩家/群聊 Bot 即可通过它访问。
+5. 停止隧道后，访问地址恢复为发布前的状态。
+
+注意：
+
+- 快速隧道地址**每次启动都会变化**（随机域名），重启后链接会更新，旧链接失效。需要长期固定地址的团建议用上面的 SakuraFrp 或固定域名 Cloudflare Tunnel。
+- 隧道在 DiceFrame 内以插件进程运行，通过它访问时 SSE 实时同步仍可工作（已实测）。
+- 使用前请先在"设置 → 访问密码"设置访问密码，避免公网地址裸露。
 
 ### 对外分享前
 
