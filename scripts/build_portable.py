@@ -299,7 +299,7 @@ def main() -> int:
 
     if BUILD_ROOT.exists():
         remove_generated_tree(BUILD_ROOT)
-    build_release.prepare_package_tree(app_dir)
+    build_release.prepare_package_tree(app_dir, include_cloudflared=False)
     (app_dir / "web_ui.bat").unlink(missing_ok=True)
     build_release.build_frontend(app_dir)
     remove_generated_tree(app_dir / "frontend-v2")

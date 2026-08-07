@@ -194,7 +194,7 @@ def download_cloudflared(package_dir: Path) -> None:
         print(f"cloudflared saved to {target}")
     except Exception as exc:  # noqa: BLE001
         print(f"Warning: cloudflared download failed, plugin will fetch at runtime: {exc}")
-def prepare_package_tree(package_dir: Path) -> None:
+def prepare_package_tree(package_dir: Path, *, include_cloudflared: bool = True) -> None:
     if package_dir.exists():
         shutil.rmtree(package_dir)
     package_dir.mkdir(parents=True)
@@ -211,7 +211,8 @@ def prepare_package_tree(package_dir: Path) -> None:
     for rel in FRONTEND_DIRS:
         copy_tree(ROOT / "frontend-v2" / rel, frontend_dir / rel)
 
-    download_cloudflared(package_dir)
+    if include_cloudflared:
+        download_cloudflared(package_dir)
 
 
 def build_frontend(package_dir: Path) -> None:
