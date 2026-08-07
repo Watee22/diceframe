@@ -434,13 +434,18 @@ onMounted(async () => {
         </NButton>
       </section>
       <NSpin :show="toolsLoading">
-        <component
-          v-for="p in toolUiPlugins"
-          :key="p.id"
-          :is="toolUiRegistry[p.tool_ui!]"
-        />
-        <div v-if="plainTools.length" class="tool-grid">
-          <article v-for="tool in plainTools" :key="toolKey(tool)" class="tool-card">
+        <template v-if="toolUiPlugins.length">
+          <h4 class="tool-section-title">{{ t('pluginToolsDedicated') }}</h4>
+          <component
+            v-for="p in toolUiPlugins"
+            :key="p.id"
+            :is="toolUiRegistry[p.tool_ui!]"
+          />
+        </template>
+        <template v-if="plainTools.length">
+          <h4 class="tool-section-title">{{ t('pluginToolsManualTitle') }}</h4>
+          <div class="tool-grid">
+            <article v-for="tool in plainTools" :key="toolKey(tool)" class="tool-card">
             <div class="tool-heading">
               <div>
                 <h3>{{ tool.title || tool.name }}</h3>
@@ -468,8 +473,9 @@ onMounted(async () => {
             </NButton>
             <pre v-if="toolResults[toolKey(tool)]" class="tool-result">{{ toolResults[toolKey(tool)] }}</pre>
           </article>
-        </div>
-        <p v-else-if="!toolUiPlugins.length" class="muted">{{ t('noRunningPluginTools') }}</p>
+          </div>
+        </template>
+        <p v-if="!toolUiPlugins.length && !plainTools.length" class="muted">{{ t('noRunningPluginTools') }}</p>
       </NSpin>
     </NTabPane>
 
@@ -902,6 +908,15 @@ onMounted(async () => {
 
 .toolbar-row {
   margin-bottom: 14px;
+}
+
+.tool-section-title {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary, #7f8a99);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .type-filter-row {
