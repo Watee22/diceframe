@@ -125,22 +125,34 @@ Process plugins inherit only a small operating-system variable allowlist. A plug
 
 The host creates, restarts, and manages the **plugin process** (exponential backoff restart, reset after stability). Each plugin must handle two things itself to avoid becoming a zombie or leaking child processes:
 
-1. **Watch the parent process**: the host injects `TRPG_PARENT_PID` (the main process PID). When the host exits, the plugin should end itself immediately; otherwise it is left as an orphan. See the independently-distributed `cloudflare-tunnel` plugin (repo [`diceframe/cloudflare-tunnel`](https://github.com/diceframe/cloudflare-tunnel)) for a self-contained `parent_watch.py` reference implementation (cross-platform `pid_exists` + `start_parent_watch`); process plugins can copy it:
+1. **Watch the parent process and the host generation**: the host injects `TRPG_PARENT_PID` (the main process PID) and atomically writes this host process's generation token to `DICEFRAME_PLUGIN_DATA_DIR/.host-generation` before spawning a plugin each time. The plugin should check both, and exit (self-terminate) immediately when either triggers:
+   - **Parent PID disappears**: the host process has exited; otherwise the plugin is left as an orphan.
+   - **Host generation changes or is missing**: the DiceFrame main process restarts via `os.execv` (PID and starttime stay the same), so a pure PID check wrongly thinks the parent is alive, leaving the old plugin process as an orphan that keeps holding single-instance locks and other resources. A changed or missing generation file means the host has restarted; the plugin should exit immediately.
+
+   See the independently-distributed `cloudflare-tunnel` plugin (repo [`diceframe/cloudflare-tunnel`](https://github.com/diceframe/cloudflare-tunnel), generation detection built in since v0.2.0) for a self-contained `parent_watch.py` reference implementation (cross-platform `pid_exists` + `read_generation_file` + `start_parent_watch`); process plugins can copy it and pass the generation file path and current value:
 
    ```python
    # self-contained in the plugin, not an SDK public export
-   from parent_watch import start_parent_watch
+   from pathlib import Path
+   from parent_watch import read_generation_file, start_parent_watch
 
-   start_parent_watch(on_exit=lambda: cleanup_your_subprocess())
+   generation_file = Path(os.environ["DICEFRAME_PLUGIN_DATA_DIR"]) / ".host-generation"
+   start_parent_watch(
+       on_exit=lambda: cleanup_your_subprocess(),
+       generation_file=generation_file,
+       initial_generation=read_generation_file(generation_file),
+   )
    ```
 
-   `on_exit` is the cleanup callback when the host exits (for example, killing subprocesses the plugin spawned).
+   `on_exit` is the cleanup callback when the host exits or restarts (for example, killing subprocesses the plugin spawned). Plugins with a single-instance lock (such as channel adapters) should also release the lock in `on_exit`, and can follow the `qq-napcat` plugin v1.4.0 lock takeover (orphan detection + SIGTERM→SIGKILL then rebuild the lock) so new instances are not rejected by a stale lock.
+
+   Older hosts (< 2.0.2) do not write the generation file: `read_generation_file` returns an empty string, the generation check is skipped, and the plugin degrades to pure PID detection, working on both new and old hosts.
 
 2. **Clean up child processes on exit**: any subprocess the plugin spawns (such as an external binary) must be terminated when the plugin exits, to avoid leftovers. Kill them after the plugin main loop finishes and provide a fallback via `start_parent_watch(on_exit=...)`.
 
 The host's plugin-process restart (`_monitor_process`) and the plugin's own subprocess recovery are separate layers: a crashed plugin process is restarted by the host; a subprocess the plugin spawned and crashed is the plugin's own responsibility (a retry with exponential backoff capped at 60s is suggested).
 
-Boundary of the convention: reconnect strategies and business-specific backoff are plugin-specific and not standardized. Only "watch the parent process + clean up on exit" is the baseline every process plugin should follow.
+Boundary of the convention: reconnect strategies and business-specific backoff are plugin-specific and not standardized. Only "watch the parent process + the host generation + clean up on exit" is the baseline every process plugin should follow.
 
 ## 6.3 config.schema.json
 

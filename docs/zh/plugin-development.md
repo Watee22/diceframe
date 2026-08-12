@@ -185,22 +185,34 @@ tool
 
 宿主负责创建、重启和管理**插件进程**（指数退避重启、稳定后复位）。插件自身必须负责两件事，避免成为僵尸或残留子进程：
 
-1. **监控父进程存活**：宿主为插件注入 `TRPG_PARENT_PID`（主进程 PID）。宿主进程退出后，插件应立即结束（自杀），否则会残留为孤儿进程。可参照独立分发的 `cloudflare-tunnel` 插件（仓库 [`diceframe/cloudflare-tunnel`](https://github.com/diceframe/cloudflare-tunnel)）内置的 `parent_watch.py` 参考实现（跨平台 `pid_exists` + `start_parent_watch`），进程型插件可复制：
+1. **监控父进程存活与宿主世代**：宿主为插件注入 `TRPG_PARENT_PID`（主进程 PID），并在每次启动插件进程前，把本宿主进程的世代标识（token）原子写入 `DICEFRAME_PLUGIN_DATA_DIR/.host-generation`。插件须双检，任一触发立即退出（自杀）：
+   - **父进程 PID 消失**：宿主进程退出，插件应立即结束，否则残留为孤儿进程。
+   - **宿主世代变化/缺失**：DiceFrame 主程序重启是 `os.execv` 自替换（PID 与 starttime 都不变），纯 PID 检测会误判父进程存活，宿主换代后旧插件进程残留为孤儿、继续占用单实例锁等资源。世代文件值变化或缺失 = 宿主已换代，插件应立即退出。
+
+   可参照独立分发的 `cloudflare-tunnel` 插件（仓库 [`diceframe/cloudflare-tunnel`](https://github.com/diceframe/cloudflare-tunnel)，v0.2.0 起内置世代检测）的 `parent_watch.py` 参考实现（跨平台 `pid_exists` + `read_generation_file` + `start_parent_watch`），进程型插件可复制，并传入世代文件路径与当前值：
 
    ```python
    # 插件内 self-contained 实现，不依赖 SDK 公共导出
-   from parent_watch import start_parent_watch
+   from pathlib import Path
+   from parent_watch import read_generation_file, start_parent_watch
 
-   start_parent_watch(on_exit=lambda: cleanup_your_subprocess())
+   generation_file = Path(os.environ["DICEFRAME_PLUGIN_DATA_DIR"]) / ".host-generation"
+   start_parent_watch(
+       on_exit=lambda: cleanup_your_subprocess(),
+       generation_file=generation_file,
+       initial_generation=read_generation_file(generation_file),
+   )
    ```
 
-   `on_exit` 是宿主退出时的清理回调（如 kill 插件 spawn 的子进程）。
+   `on_exit` 是宿主退出或换代时的清理回调（如 kill 插件 spawn 的子进程）。带单实例锁的插件（如聊天桥接）还应在 `on_exit` 中释放锁，并可按 `qq-napcat` 插件 v1.4.0 实现锁接管（孤儿检测 + SIGTERM→SIGKILL 后重建锁），避免新实例被残留锁拒绝。
+
+   旧版宿主（< 2.0.2）不写世代文件：`read_generation_file` 读到空串，世代检查自动跳过，退化为纯 PID 检测，插件在新旧宿主上均可用。
 
 2. **退出时清理子进程**：插件 spawn 的任何子进程（如外部二进制），必须在插件退出时终止，防止残留。建议在插件主循环结束后统一 kill，并配合 `start_parent_watch` 的 `on_exit` 兜底。
 
 宿主的插件进程重启（`_monitor_process`）与插件的子进程自愈是两个层面：插件进程崩溃由宿主拉起；插件内部自己 spawn 的子进程崩溃，由插件自己负责（可自行实现重试，指数退避上限建议 60s）。
 
-规范边界：重连策略、业务退避等因插件而异，不强制统一；只有"监控父进程 + 退出清理"是每个进程型插件都应遵守的底线。
+规范边界：重连策略、业务退避等因插件而异，不强制统一；只有"监控父进程 + 宿主世代 + 退出清理"是每个进程型插件都应遵守的底线。
 
 ## 6.3 config.schema.json
 
