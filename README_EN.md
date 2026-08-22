@@ -12,15 +12,15 @@
 
 ![DiceFrame Web UI preview](docs/assets/diceframe-readme-hero.jpg)
 
-DiceFrame is a self-hostable **AI tabletop RPG engine** supporting **DND/COC/custom rules**, with **multiplayer WebUI**.
+DiceFrame is a self-hostable **AI tabletop RPG engine** supporting **D&D / CoC / custom rules** with a **multiplayer Web UI**.
 
 It brings the Web UI, character sheets, lorebooks, dice checks, state changes, campaign logs, and optional chat-bot play into one shared game state. Players describe what they want to do in natural language; DiceFrame passes those actions to a GM model, handles dice and state tags, then syncs the result back to the browser.
 
 ## What It Does
 
 - Web UI for creating games, joining tables, managing characters, lorebooks, rules, logs, and settings.
-- Solo and multiplayer play, with invite links, waiting states, away players, GM force-advance, and SSE updates.
-- Dice and state handling for d20 / d100 checks, HP, gold, items, XP, death, revival, and scene changes.
+- Solo and multiplayer play, with invite links, waiting states, away players, GM force-advance, SSE updates, and experimental WebRTC player direct connect through one-time link codes.
+- Layered resolution for D&D 5e-inspired Lite, custom d20, CoC 7e-inspired d100, and no-dice narrative rules, including rule-declared advantage/disadvantage, CoC bonus/penalty dice, HP, gold, items, XP, death, revival, and scene changes.
 - Lorebook entries for NPCs, locations, items, events, puzzles, and factions.
 - Long-session summaries, with optional embedding-based memory recall.
 - AI-assisted world, rule, character, and lorebook generation.
@@ -128,6 +128,8 @@ The plugin store indexes author-owned repositories. Installation resolves the la
 | User guide | [User guide](https://github.com/diceframe/diceframe-content/blob/main/docs/en/guide.md) | [用户手册](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/guide.md) |
 | Docker deployment | [Docker deployment](https://github.com/diceframe/diceframe-content/blob/main/docs/en/deploy.md) | [Docker 部署](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/deploy.md) |
 | Application updates | [Application updates](docs/en/updates.md) | [应用更新](docs/zh/updates.md) |
+| Rules and dice | [Rules and dice](docs/en/rules-and-dice.md) | [规则与骰子](docs/zh/rules-and-dice.md) |
+| Player Direct Connect (experimental) | [Player Direct Connect](docs/en/direct-connect.md) | [玩家直连](docs/zh/direct-connect.md) |
 | Plugin development | [Plugin development](https://github.com/diceframe/diceframe-content/blob/main/docs/en/plugin-development.md) | [插件开发](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/plugin-development.md) |
 | Plugin index and review | [Plugin registry](https://github.com/diceframe/diceframe-content/blob/main/docs/en/plugin-registry.md) | [插件索引与审核](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/plugin-registry.md) |
 | Bot Bridge core | [Bot Bridge Core](https://github.com/diceframe/diceframe-content/blob/main/docs/en/bot-bridge-core.md) | [Bot Bridge 核心](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/bot-bridge-core.md) |

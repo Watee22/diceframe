@@ -12,7 +12,7 @@
 
 <p align="center"><a href="https://diceframe.com">官方网站</a></p>
 
-DiceFrame 是一个可以自己部署的 **ai跑团引擎**，支持 **DND/COC/自定义规则**，**多人 WebUI**。
+DiceFrame 是一个可以自己部署的 **AI 跑团引擎**，支持 **D&D / CoC / 自定义规则**与**多人 WebUI**。
 
 它把 Web 桌面、角色卡、世界书、骰子、状态变动、剧情日志和群聊 Bot 接到同一个游戏状态里。玩家用自然语言说“我想做什么”，系统负责把这句话交给 GM 模型、处理骰子与状态变化，并把结果同步给网页或群聊里的其他玩家。
 
@@ -34,8 +34,8 @@ QQ 交流群：1060613588
 ## 功能概览
 
 - WebUI：创建游戏、加入游戏、角色管理、世界书、规则编辑、日志回看、设置页。
-- 多人桌：邀请链接、玩家等待、暂离/回来、GM 强制推进、SSE 实时同步。
-- 骰子与状态：支持 d20（DND 5e）和 d100（COC）检定，HP、理智、金币、物品、经验、死亡/复活等状态标签。
+- 多人桌：邀请链接、玩家等待、暂离/回来、GM 强制推进、SSE 实时同步；实验性玩家直连可通过一次性链接码建立 WebRTC 对局。
+- 骰子与状态：D&D 5e 轻量规则、自定义 d20、CoC 7e 轻量 d100 与无骰叙事分层处理；支持规则声明的优势/劣势、CoC 奖惩骰，以及 HP、理智、金币、物品、经验、死亡/复活等状态标签。
 - 世界书：NPC、地点、物品、事件、谜题、势力等条目，按关键词注入上下文。
 - 记忆与摘要：长团会压缩历史，也可以启用 embedding 做语义召回。
 - AI 生成：世界、规则、角色、世界书条目都可以由模型辅助生成。
@@ -179,6 +179,8 @@ Bot 不直接读写存档，只通过 Web 服务的 HTTP API 工作。插件商�
 | 用户手册 | [用户手册](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/guide.md) | [User guide](https://github.com/diceframe/diceframe-content/blob/main/docs/en/guide.md) |
 | Docker 部署 | [Docker 部署](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/deploy.md) | [Docker deployment](https://github.com/diceframe/diceframe-content/blob/main/docs/en/deploy.md) |
 | 应用更新 | [应用更新](docs/zh/updates.md) | [Application updates](docs/en/updates.md) |
+| 规则与骰子 | [规则与骰子](docs/zh/rules-and-dice.md) | [Rules and dice](docs/en/rules-and-dice.md) |
+| 玩家直连（实验性） | [玩家直连](docs/zh/direct-connect.md) | [Player Direct Connect](docs/en/direct-connect.md) |
 | 插件开发 | [插件开发](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/plugin-development.md) | [Plugin development](https://github.com/diceframe/diceframe-content/blob/main/docs/en/plugin-development.md) |
 | 插件索引与审核 | [插件索引与审核](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/plugin-registry.md) | [Plugin registry](https://github.com/diceframe/diceframe-content/blob/main/docs/en/plugin-registry.md) |
 | Bot Bridge 核心 | [Bot Bridge 核心](https://github.com/diceframe/diceframe-content/blob/main/docs/zh/bot-bridge-core.md) | [Bot Bridge Core](https://github.com/diceframe/diceframe-content/blob/main/docs/en/bot-bridge-core.md) |
@@ -227,7 +229,7 @@ data/
 ├── plugins/               # 内置/示例插件（随版本分发；用户安装的插件在 data/plugin-packages/）
 ├── prompts/               # GM 系统提示词
 ├── templates/             # 内置规则和世界模板
-└── docs/                  # 技术文档（zh/en 双语：应用更新；插件开发等文档见 diceframe-content）
+└── docs/                  # 双语文档：更新、规则与骰子、玩家直连；插件开发等见 diceframe-content
 ```
 
 ## License
