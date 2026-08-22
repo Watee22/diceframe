@@ -245,7 +245,11 @@ class DiceFrameBridgeService:
         if verb == "感知" or is_private_log(text):
             return await self._private_log(message)
         if verb == "掷骰":
-            return await self._action(message, "", confirm=True)
+            return bridge_text(
+                language,
+                "现在不需要手动确认掷骰：请直接描述行动。全员提交后，或 GM 手动推进时，系统会统一判断检定并只掷一次。",
+                "Manual roll confirmation is no longer required. Describe your action; after everyone submits, or when the GM advances, the server adjudicates and rolls once.",
+            )
         luck = luck_decision(text)
         if verb in {"幸运", "不用幸运"} or luck is not None:
             return await self._luck(message, text, spend=(verb == "幸运") if luck is None else luck)

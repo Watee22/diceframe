@@ -468,14 +468,19 @@ class WebAPI:
         return None
 
     def _load_rule_for_game(self, inst) -> RuleSystem | None:
-        """从游戏实例关联的世界模板加载规则系统。"""
+        """优先按存档自身规则加载；旧存档缺失时回退世界默认规则。"""
         if not inst.world_id or not self._worlds_dir:
             return None
         world_data = self._load_world_template(inst.world_id)
         if not world_data:
             return None
         language = getattr(inst, "language", "") or world_data.get("language", "")
-        return self._load_rule_by_id(str(world_data.get("default_rule") or "freeform_fantasy"), language)
+        rule_id = str(
+            getattr(inst, "rule_id", "")
+            or world_data.get("default_rule")
+            or "freeform_fantasy"
+        )
+        return self._load_rule_by_id(rule_id, language)
 
     def _load_rule_by_id(self, rule_id: str, language: str = "") -> RuleSystem | None:
         rule_id = (rule_id or "").strip()

@@ -28,6 +28,38 @@ logger = logging.getLogger("trpg")
 _MAX_LOOT_PER_ROUND = 20
 
 
+def discard_unresolved_player_damage(instance: GameInstance, update: dict) -> None:
+    """丢弃没有服务端失败检定依据的模型伤害标签。
+
+    战斗伤害由战斗结算器直接写入 HP；环境、陷阱等不确定伤害则必须先有
+    服务端 CheckResult。模型仍可负责叙事，但不能在玩家未失败、甚至没有
+    检定时凭空把 HP 扣到 0。函数原地修改解析结果，确保实际状态、日志摘要
+    与前端展示一致。
+    """
+    if not isinstance(update, dict):
+        return
+    failed_uids = {
+        str(check.get("actor_uid") or "")
+        for check in (instance.last_checks or [])
+        if str(check.get("verdict") or "") in {"失败", "大失败", "failure", "fumble"}
+    }
+    players_update = update.get("players")
+    if not isinstance(players_update, dict):
+        return
+    for uid, player_update in list(players_update.items()):
+        if not isinstance(player_update, dict):
+            continue
+        hp_change = player_update.get("hp_change")
+        if isinstance(hp_change, (int, float)) and hp_change < 0 and uid not in failed_uids:
+            player_update.pop("hp_change", None)
+            logger.warning(
+                "模型伤害缺少失败检定依据，已丢弃: uid=%s change=%s round=%d",
+                uid, hp_change, instance.round_number,
+            )
+        if not player_update:
+            players_update.pop(uid, None)
+
+
 class StateUpdateApplier:
     """将 LLM 输出的 state_update 应用到游戏状态。"""
 

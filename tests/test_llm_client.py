@@ -305,6 +305,61 @@ async def test_call_tools_uses_native_openai_function_calling(monkeypatch):
         "type": "function",
         "function": {"name": "dice_checks"},
     }
+    assert "thinking" not in body
+
+
+@pytest.mark.asyncio
+async def test_official_deepseek_v4_disables_thinking_for_tool_calls(monkeypatch):
+    session = _ToolOpenAISession()
+    provider = ProviderConfig(
+        provider_name="deepseek",
+        base_url="https://api.deepseek.com/v1",
+        api_key="test-key",
+        model_name="deepseek-v4-flash",
+    )
+    client = LLMClient(providers=[provider], default=provider.provider_name)
+
+    async def fake_get_session():
+        return session
+
+    monkeypatch.setattr(client, "_get_session", fake_get_session)
+    await client.call_tools("system", "actions", tools=[_DICE_TOOL])
+
+    body = session.calls[0]["json"]
+    assert body["thinking"] == {"type": "disabled"}
+    assert body["tool_choice"] == {
+        "type": "function",
+        "function": {"name": "dice_checks"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_official_deepseek_v4_disables_thinking_for_json_mode(monkeypatch):
+    session = _SequentialSession([_CompleteOpenAIResponse()])
+    provider = ProviderConfig(
+        provider_name="deepseek",
+        base_url="https://api.deepseek.com/v1",
+        api_key="test-key",
+        model_name="deepseek-v4-pro",
+    )
+    client = LLMClient(providers=[provider], default=provider.provider_name)
+
+    async def fake_get_session():
+        return session
+
+    monkeypatch.setattr(client, "_get_session", fake_get_session)
+    await client._call_openai_compatible(
+        provider,
+        "system",
+        "user",
+        temperature=0.1,
+        max_tokens=128,
+        json_mode=True,
+    )
+
+    body = session.calls[0]["json"]
+    assert body["response_format"] == {"type": "json_object"}
+    assert body["thinking"] == {"type": "disabled"}
 
 
 class _ErrorOpenAIResponse(_FakeResponse):

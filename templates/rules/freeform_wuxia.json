@@ -1,6 +1,6 @@
 {
   "extends": "base_d20",
-  "rule_version": "1.1",
+  "rule_version": "1.2",
   "rule_id": "freeform_wuxia",
   "scene_image": {"kind": "builtin", "id": "freeform_wuxia"},
   "rule_name": "武侠仙侠自由规则",

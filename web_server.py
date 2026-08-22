@@ -817,6 +817,13 @@ def _share_player_user_id(request: web.Request) -> str:
             return uid or request.get("user_id", "")
         if request.method == "POST" and tail in {"players", "action", "sse-ticket", "avatars", "scene-image"}:
             return uid or request.get("user_id", "")
+        if (
+            request.method == "POST"
+            and tail == "checks"
+            and len(parts) >= 6
+            and parts[5] == "luck"
+        ):
+            return uid or request.get("user_id", "")
         if request.method == "PUT" and tail == "character":
             return uid or request.get("user_id", "")
     return ""

@@ -1,7 +1,7 @@
 {
   "language": "ja",
   "extends": "base_d20",
-  "rule_version": "1.1",
+  "rule_version": "1.2",
   "rule_id": "dnd5e",
   "scene_image": {"kind": "builtin", "id": "dnd5e"},
   "rule_name": "D&D 5e SRD 風ライトルール",
@@ -9,6 +9,9 @@
   "description": "D&D 5e SRD を基にした軽量アシストルール：12の職業、習熟ボーナス、d20判定、簡略化された戦闘。物語志向のセッション向けで、完全な RAW の再現ではありません。",
   "mechanics": "dnd5e_core",
   "ruleset_level": "assisted",
+  "check_mechanic": {
+    "critical": {"success": null, "failure": null}
+  },
   "dc_table": {
     "easy": 10,
     "normal": 15,

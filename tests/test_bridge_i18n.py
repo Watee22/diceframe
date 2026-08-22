@@ -62,6 +62,9 @@ async def test_english_binding_persists_language_and_drives_shared_replies(tmp_p
     joined = await service.handle(BridgeInput("discord-channel", "player-platform", "/df join Erin"))
     assert joined.replies == ["Character claimed: Erin"]
 
+    roll_notice = await service.handle(BridgeInput("discord-channel", "player-platform", "/df roll"))
+    assert "Manual roll confirmation is no longer required" in roll_notice.replies[0]
+
     status = await service.handle(BridgeInput("discord-channel", "player-platform", "/df status"))
     assert "Erin status" in status.replies[0]
     assert "Gold: 4" in status.replies[0]

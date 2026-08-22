@@ -1,5 +1,5 @@
 {
-  "rule_version": "1.2",
+  "rule_version": "1.3",
   "rule_id": "freeform_coc",
   "scene_image": {"kind": "builtin", "id": "freeform_coc"},
   "language": "en",
@@ -24,6 +24,16 @@
   "attribute_points": 460,
   "attr_hint": "CoC 7e-style uses percentile attributes. STR/CON/DEX/APP/POW are usually 3d6x5, SIZ/INT/EDU are usually (2d6+6)x5; for quick creation distribute roughly 460 total.",
   "dice_system": "d100",
+  "check_mechanic": {
+    "dice": "d100",
+    "comparison": "roll_lte_target",
+    "critical": {"success": 1, "failure_rule": "coc7e"},
+    "advantage": {
+      "type": "coc_bonus_penalty",
+      "allow_explicit": true,
+      "assistance_grants": ""
+    }
+  },
   "combat_model": "lethal_narrative",
   "growth_system": "skill_improvement",
   "bonus_dice": true,

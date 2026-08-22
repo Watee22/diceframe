@@ -1,7 +1,7 @@
 {
   "language": "ja",
   "extends": "base_d20",
-  "rule_version": "1.1",
+  "rule_version": "1.2",
   "rule_id": "freeform_fantasy",
   "scene_image": {"kind": "builtin", "id": "freeform_fantasy"},
   "rule_name": "クラシックファンタジー・フリーフォーム",

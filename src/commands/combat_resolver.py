@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 
 from src.engine.combat import AttackResult, resolve_attack
-from src.engine.constants import WEAPON_DAMAGE
+from src.engine.constants import COMBAT_ATTACK_KEYWORDS, WEAPON_DAMAGE
 from src.engine.dice import roll_initiative
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
@@ -20,44 +20,61 @@ class CombatResolver:
     """处理战斗目标识别、攻击结算和先攻顺序。"""
 
     def resolve_combat(self, instance: GameInstance, actions_text: str, combat_model: str) -> str:
-        """检测战斗意图，为所有攻击者结算，返回结构化结算文本。"""
+        """只结算每条行动中明确声明的攻击，不从汇总文本猜攻击者。
 
-        # 寻找目标（敌人 > NPC > 其他玩家）
-        target = None
-        target_name = "目标"
-        for enemy in instance.combat_enemies:
-            enemy_name = enemy.get("character_name", enemy.get("name", ""))
-            if enemy_name and enemy_name in actions_text:
-                target = enemy
-                target_name = enemy_name
-                break
-        if target is None:
-            for npc_name in instance.npcs:
-                if npc_name in actions_text:
-                    target = instance.npcs[npc_name]
-                    target_name = npc_name
-                    break
-        if target is None:
-            for uid, pdata, cs in instance.iter_player_sheets():
-                char_name = pdata.get("character_name", "")
-                if char_name and char_name in actions_text and uid != "web_user":
-                    target = cs or {"name": char_name, "hp": 10, "armor": 0}
-                    target["character_name"] = char_name
-                    target_name = char_name
-                    break
-        if target is None:
-            return ""
-
-        # 查找所有攻击者
+        旧实现把汇总文本里的角色标签也当作战斗内容：只要任意一句提到
+        “魔法/防御”，六名角色就会被当成攻击者，并把标签中第一个玩家当
+        目标。这里改为逐行动识别，目标也只能来自该行动本身。
+        """
         results = []
-        attacker_uids_seen: set[str] = set()
-        for uid, pdata, cs in instance.iter_player_sheets():
-            char_name = pdata.get("character_name", "")
-            if not char_name or char_name not in actions_text:
+        for action in list(instance.action_queue):
+            uid = str(action.get("user_id") or "")
+            if uid not in instance.players:
                 continue
-            if uid in attacker_uids_seen:
+            action_text = str(action.get("text") or "")
+            if not any(keyword in action_text for keyword in COMBAT_ATTACK_KEYWORDS):
                 continue
-            attacker_uids_seen.add(uid)
+            pdata = instance.players[uid]
+            cs = instance.get_character_sheet(uid)
+            char_name = str(pdata.get("character_name") or uid)
+
+            # 寻找该行动明确点名的目标（敌人 > NPC > 其他玩家）。
+            target = None
+            target_name = ""
+            target_uid = ""
+            for enemy in instance.combat_enemies:
+                enemy_name = str(enemy.get("character_name") or enemy.get("name") or "")
+                if enemy_name and enemy_name in action_text:
+                    target = enemy
+                    target_name = enemy_name
+                    break
+            if target is None:
+                for npc_name, npc in instance.npcs.items():
+                    display_name = str(npc.get("character_name") or npc.get("name") or npc_name)
+                    if display_name and display_name in action_text:
+                        target = npc
+                        target_name = display_name
+                        break
+            if target is None:
+                for candidate_uid, candidate_data, candidate_sheet in instance.iter_player_sheets():
+                    candidate_name = str(candidate_data.get("character_name") or "")
+                    if candidate_uid != uid and candidate_name and candidate_name in action_text:
+                        target = candidate_sheet
+                        target["character_name"] = candidate_name
+                        target_name = candidate_name
+                        target_uid = candidate_uid
+                        break
+            # 已在战斗中时，“攻击敌人”一类泛称可落到第一个存活敌人；
+            # 非战斗场景不猜目标，避免误伤玩家或 NPC。
+            if target is None and instance.combat_state != "none":
+                target = next(
+                    (enemy for enemy in instance.combat_enemies if int(enemy.get("hp", 1) or 0) > 0),
+                    None,
+                )
+                if target is not None:
+                    target_name = str(target.get("character_name") or target.get("name") or "敌人")
+            if target is None:
+                continue
 
             # 武器
             weapon = None
@@ -79,8 +96,8 @@ class CombatResolver:
             # PvP: 检查友军伤害
             attacker_faction = cs.get("faction", "party")
             target_faction = ""
-            if target_name in instance.players:
-                target_faction = instance.get_character_sheet(target_name).get("faction", "party")
+            if target_uid:
+                target_faction = instance.get_character_sheet(target_uid).get("faction", "party")
             same_faction = attacker_faction and attacker_faction == target_faction
 
             result = resolve_attack(

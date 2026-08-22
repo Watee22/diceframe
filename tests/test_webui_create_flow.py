@@ -187,6 +187,39 @@ def web_api(tmp_path):
         lorebook.close()
 
 
+def test_game_rule_loading_prefers_saved_rule_and_migrates_legacy_save(web_api):
+    api, _lorebook, registry, _fake_llm, _worlds_dir = web_api
+    (api._rules_dir / "saved_custom.json").write_text(
+        json.dumps({
+            "rule_id": "saved_custom",
+            "rule_name": "存档自带规则",
+            "dice_system": "d20",
+            "max_check_dc": 17,
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    saved = registry.get_or_create(("web", "saved-rule", "bot"))
+    saved.world_id = "template_world"
+    saved.rule_id = "saved_custom"
+
+    loaded = api._load_rule_for_game(saved)
+
+    assert loaded is not None
+    assert loaded.rule_id == "saved_custom"
+    assert loaded.max_check_dc == 17
+
+    legacy = registry.get_or_create(("web", "legacy-rule", "bot"))
+    legacy.world_id = "template_world"
+    legacy.rule_id = ""
+
+    api.list_games()
+
+    assert legacy.rule_id == "freeform_fantasy"
+    migrated = api._load_rule_for_game(legacy)
+    assert migrated is not None
+    assert migrated.rule_id == "freeform_fantasy"
+
+
 @pytest.mark.asyncio
 async def test_generate_lorebook_entries_from_natural_language(web_api):
     api, lorebook, _registry, fake_llm, _worlds_dir = web_api
@@ -851,6 +884,30 @@ def test_update_custom_rule_json(web_api):
     assert reloaded["description"] == "编辑后说明"
     assert reloaded["attribute_points"] == 66
     assert reloaded["custom"] is True
+
+
+def test_update_custom_d20_rule_validates_max_check_dc(web_api):
+    api, _lorebook, _registry, _fake_llm, _worlds_dir = web_api
+    created = api.save_custom_rule({
+        "source_rule_id": "freeform_fantasy",
+        "rule_id": "custom_dc_rule",
+        "rule_name": "自定义 DC 规则",
+    })
+    assert created["ok"] is True
+    template = api.get_rule_template("custom_dc_rule")["rule"]
+    template["max_check_dc"] = 30
+    assert api.update_custom_rule("custom_dc_rule", template)["ok"] is True
+
+    template["max_check_dc"] = 99
+    rejected = api.update_custom_rule("custom_dc_rule", template)
+    assert rejected["ok"] is False
+    assert "max_check_dc" in rejected["error"]
+
+    template["max_check_dc"] = 20
+    template["dice_system"] = "2d6"
+    rejected = api.update_custom_rule("custom_dc_rule", template)
+    assert rejected["ok"] is False
+    assert "dice_system" in rejected["error"]
 
 
 @pytest.mark.asyncio

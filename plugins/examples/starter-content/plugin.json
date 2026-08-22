@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "starter-content",
   "name": "Starter Content",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A small DiceFrame content-pack example with a rule, world, character, NPC, item, spell, and class.",
   "plugin_type": "content-pack",
   "config_schema": "config.schema.json",

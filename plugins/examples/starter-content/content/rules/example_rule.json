@@ -5,6 +5,17 @@
   "description": "A minimal rule file for DiceFrame content-pack examples.",
   "dice_system": "d20",
   "combat_model": "hp_based",
+  "check_mechanic": {
+    "dice": "d20",
+    "comparison": "roll_plus_modifier_gte_target",
+    "critical": {"success": 20, "failure": 1},
+    "advantage": {
+      "type": "d20_keep_high_low",
+      "allow_explicit": true,
+      "assistance_grants": "advantage"
+    }
+  },
+  "max_check_dc": 20,
   "mechanics": "Roll d20 and compare against the GM target number.",
   "attribute_points": 60,
   "max_skills": 6,

@@ -7,7 +7,7 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-from src.rules.rule_system import RuleSystem
+from src.rules.rule_system import SUPPORTED_DICE_SYSTEMS, RuleSystem
 from src.engine.language import field_suffixes
 
 if TYPE_CHECKING:
@@ -127,6 +127,8 @@ def get_rule_template(api: "WebAPI", rule_id: str) -> dict[str, Any]:
         return {"ok": False, "error": f"规则不存在: {rule_id}"}
     template = json.loads(rule_path.read_text(encoding="utf-8"))
     rule = RuleSystem.load(rule_path)
+    template.setdefault("check_mechanic", rule.check_mechanic)
+    template.setdefault("max_check_dc", rule.max_check_dc)
     template.setdefault("conflict_model", rule.conflict_model)
     template.setdefault("currency_system", rule.currency_system)
     template.setdefault("resource_schema", rule.resource_schema)
@@ -169,6 +171,19 @@ def update_custom_rule(api: "WebAPI", rule_id: str, template: dict[str, Any]) ->
         return {"ok": False, "error": "规则名称不能为空"}
     if not isinstance(template.get("attributes", []), list):
         return {"ok": False, "error": "attributes 必须是数组"}
+    dice_system = str(template.get("dice_system") or "d20").lower()
+    if dice_system not in SUPPORTED_DICE_SYSTEMS:
+        supported = ", ".join(sorted(SUPPORTED_DICE_SYSTEMS))
+        return {"ok": False, "error": f"dice_system 当前仅支持 {supported}"}
+    template["dice_system"] = dice_system
+    if dice_system == "d20":
+        try:
+            max_check_dc = int(template.get("max_check_dc", 20))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "max_check_dc 必须是 1..40 的整数"}
+        if not 1 <= max_check_dc <= 40:
+            return {"ok": False, "error": "max_check_dc 必须是 1..40 的整数"}
+        template["max_check_dc"] = max_check_dc
 
     template["rule_id"] = rule_id
     template["custom"] = True

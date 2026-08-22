@@ -31,6 +31,13 @@ MAX_DICE_SIDES = 10000
 MAX_DICE_MODIFIER = 100
 
 
+def roll_die(sides: int, *, zero_based: bool = False) -> int:
+    """生成一个骰面值；规则层通过此入口取随机值。"""
+    if not 2 <= sides <= MAX_DICE_SIDES:
+        raise ValueError(f"骰子面数超出范围（2-{MAX_DICE_SIDES}）: d{sides}")
+    return random.randint(0, sides - 1) if zero_based else random.randint(1, sides)
+
+
 def roll(formula: str) -> DiceResult:
     """掷骰并返回结果。
 
@@ -49,17 +56,14 @@ def roll(formula: str) -> DiceResult:
         raise ValueError(f"骰子数量超出范围（1-{MAX_DICE_COUNT}）: {formula}")
     if not 2 <= sides <= MAX_DICE_SIDES:
         raise ValueError(f"骰子面数超出范围（2-{MAX_DICE_SIDES}）: {formula}")
-    modifier = max(-MAX_DICE_MODIFIER, min(MAX_DICE_MODIFIER, modifier))
+    if not -MAX_DICE_MODIFIER <= modifier <= MAX_DICE_MODIFIER:
+        raise ValueError(f"骰子修正超出范围（±{MAX_DICE_MODIFIER}）: {formula}")
 
-    rolls = [random.randint(1, sides) for _ in range(count)]
+    rolls = [roll_die(sides) for _ in range(count)]
     total = sum(rolls) + modifier
     natural = rolls[0] if count == 1 else sum(rolls)
-
-    is_critical = count == 1 and sides == 20 and natural == 20
-    is_fumble = count == 1 and sides == 20 and natural == 1
 
     return DiceResult(
         formula=formula, rolls=rolls, modifier=modifier,
         total=total, natural=natural,
-        is_critical=is_critical, is_fumble=is_fumble,
     )

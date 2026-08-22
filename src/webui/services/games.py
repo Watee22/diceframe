@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from src.engine.character_utils import apply_resource_delta, get_resource, revive_character
 from src.engine.checks import build_check_request, roll_check_request
 from src.engine.game_instance import GameState
-from src.engine.dice import roll
+from src.engine.dice import d20_critical_thresholds, roll
 from src.engine.health import health_payload, mark_health_event, record_health_event
 from src.engine.language import DEFAULT_LANGUAGE, normalize_language
 from src.commands.resource_triggers import check_resource_triggers
@@ -120,7 +120,7 @@ def list_games(api: "WebAPI") -> dict[str, Any]:
             "state": inst.state.value,
             "round_number": inst.round_number,
             "player_count": len(inst.players),
-            "max_players": 6,
+            "max_players": max(1, int(getattr(inst, "max_players", 6) or 6)),
             "combat_active": inst.combat_active,
             "scene": inst.scene,
             "total_llm_calls": inst.total_llm_calls,
@@ -341,12 +341,19 @@ def roll_for_game(api: "WebAPI", game_key: str) -> dict[str, Any]:
         return {"ok": False, "error": "当前规则不需要掷骰"}
     formula = "d100" if dice_system == "d100" else "d20"
     result = roll(formula)
+    if dice_system == "d20":
+        crit_on, fumble_on = d20_critical_thresholds(rule)
+        critical = crit_on is not None and crit_on <= result.natural <= 20
+        fumble = fumble_on is not None and 1 <= result.natural <= fumble_on
+    else:
+        critical = result.natural == 1
+        fumble = result.natural == 100
     return {
         "ok": True,
         "dice_system": formula,
         "value": result.natural,
-        "critical": result.is_critical,
-        "fumble": result.is_fumble,
+        "critical": critical,
+        "fumble": fumble,
     }
 
 
@@ -362,17 +369,17 @@ async def resolve_pending_dice_for_game(
     pending = inst.pending_dice_actions(user_id or None)
     if not pending:
         return {"ok": True, "resolved": []}
+    rule = api._load_rule_for_game(inst)
     resolved: list[dict[str, Any]] = []
     for action in pending:
         uid = str(action.get("user_id") or "")
         request = action.get("check_request")
         if not isinstance(request, dict):
-            rule = api._load_rule_for_game(inst)
             request = build_check_request(inst, action, rule)
         if not request:
             continue
         action["check_request"] = request
-        payload = roll_check_request(request)
+        payload = roll_check_request(request, rule)
         applied = await inst.apply_action_roll(
             uid,
             payload["dice_system"],
@@ -905,7 +912,7 @@ async def create_game(api: "WebAPI", world_id: str, game_name: str = "",
     instance = await api._handler.create_game(
         game_key, world_id=world_id,
         world_name=resolved_world_name, group_name=group_name,
-        rule_id=rule_id or "freeform_fantasy",
+        rule_id=rule_id,
         language=resolved_language,
     )
     instance.set_difficulty(difficulty)

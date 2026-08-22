@@ -197,7 +197,7 @@ def build_dice_constraint_block(
                 action["dice_system"] = legacy_match.group(1)
                 action["dice_roll_source"] = "legacy"
             else:
-                rolled = roll_check_request(request)
+                rolled = roll_check_request(request, rule)
                 action["dice_value"] = rolled["value"]
                 action["dice_rolls"] = rolled["rolls"]
                 action["dice_system"] = rolled["dice_system"]

@@ -52,7 +52,7 @@ def make_rule() -> RuleSystem:
 
 
 def test_d20_target_is_clamped_to_dc_cap() -> None:
-    """后期失控 DC（25–30）必须被钳到硬上限（dc_table 最高档 + 5）。"""
+    """后期失控 DC（25–30）必须被钳到规则显式硬上限。"""
     from src.engine.dice import d20_dc_cap
     instance = make_instance()
     rule = make_rule()
@@ -60,7 +60,28 @@ def test_d20_target_is_clamped_to_dc_cap() -> None:
         {"player": "p1", "attribute": "str", "target": 30},
     ])
     assert errors == []
-    assert planned[0][1]["target"] == d20_dc_cap(rule)
+    assert d20_dc_cap(rule) == 20
+    assert planned[0][1]["target"] == 20
+
+
+def test_builtin_dnd5e_uses_default_dc_cap_twenty() -> None:
+    from src.engine.dice import d20_dc_cap
+
+    rule = RuleSystem.load(Path("templates/rules/dnd5e.json"))
+    assert rule.dc_table["extreme"] == 25
+    assert d20_dc_cap(rule) == 20
+
+
+def test_custom_d20_rule_can_raise_dc_cap_explicitly() -> None:
+    from src.engine.dice import d20_dc_cap
+
+    rule = RuleSystem({
+        "rule_id": "heroic_d20",
+        "dice_system": "d20",
+        "max_check_dc": 30,
+        "dc_table": {"normal": 18, "extreme": 28},
+    })
+    assert d20_dc_cap(rule) == 30
 
 
 def test_normalize_check_specs_accepts_valid_entries_and_rejects_bad_player() -> None:

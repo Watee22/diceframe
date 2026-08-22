@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import random
 import re
 from dataclasses import dataclass
 
@@ -31,7 +30,9 @@ from src.engine.dice_rules_coc import (
 from src.engine.dice_rules_d20 import (
     check_d20,
     check_d20_advantage,
+    d20_critical_thresholds,
     d20_dc_cap,
+    d20_verdict,
 )
 
 __all__ = [
@@ -46,7 +47,9 @@ __all__ = [
     "coc_success_level",
     "check_d20",
     "check_d20_advantage",
+    "d20_critical_thresholds",
     "d20_dc_cap",
+    "d20_verdict",
     "parse_player_roll",
     "InitResult",
     "roll_initiative",
@@ -86,6 +89,6 @@ class InitResult:
 
 def roll_initiative(dex_modifier: int = 0) -> InitResult:
     """先攻检定: d20 + 敏捷修正。"""
-    natural = random.randint(1, 20)
+    natural = roll("d20").natural
     total = natural + dex_modifier
-    return InitResult(natural=natural, total=total, modifier=modifier)
+    return InitResult(natural=natural, total=total, modifier=dex_modifier)

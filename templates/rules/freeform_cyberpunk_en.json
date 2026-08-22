@@ -1,7 +1,7 @@
 {
   "language": "en",
   "extends": "base_d20",
-  "rule_version": "1.2",
+  "rule_version": "1.3",
   "rule_id": "freeform_cyberpunk",
   "scene_image": {"kind": "builtin", "id": "freeform_cyberpunk"},
   "rule_name": "Cyberpunk d20 Freeform",

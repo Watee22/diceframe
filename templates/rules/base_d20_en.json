@@ -1,12 +1,23 @@
 {
   "language": "en",
-  "rule_version": "1.1",
+  "rule_version": "1.2",
   "rule_id": "base_d20",
   "rule_name": "d20 基础规则",
   "abstract": true,
   "description": "d20 规则模板基类，供具体规则继承",
   "mechanics": "freeform_d20_core",
   "ruleset_level": "assisted",
+  "check_mechanic": {
+    "dice": "d20",
+    "comparison": "roll_plus_modifier_gte_target",
+    "critical": {"success": 20, "failure": 1},
+    "advantage": {
+      "type": "d20_keep_high_low",
+      "allow_explicit": true,
+      "assistance_grants": "advantage"
+    }
+  },
+  "max_check_dc": 20,
   "dc_table": {
     "easy": 10,
     "normal": 15,

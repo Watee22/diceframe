@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from src.engine.checks import build_check_request
+from src.engine.checks import build_check_request, detect_advantage_mode
 from src.engine.dice import d20_dc_cap
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
@@ -26,6 +26,39 @@ _CONCEALED_OR_HAZARDOUS_WORDS = (
     "hidden", "secret", "hazard", "danger", "trap", "poison", "attack",
 )
 _SKILL_USE_PREFIXES = ("使用", "运用", "尝试", "进行", "施展", "用", "use", "attempt")
+_CHINESE_COMBAT_WORD = re.compile(r"攻击|袭击|战斗|交战|开枪|开火|射击|动手|击杀|杀死")
+_CHINESE_NEGATED_COMBAT = re.compile(
+    r"(?:没有敌人时|无敌人时)?"
+    r"(?:不要|不会|不再|不愿|不想|不打算|不准备|避免|拒绝|停止|禁止|不|别|勿)"
+    r"(?:再|去|进行|参与|主动|随意|轻易|贸然|立刻|马上|不必要的|"
+    r"与(?:任何|未知|当前)?目标)*"
+    r"(?:攻击|袭击|战斗|交战|开枪|开火|射击|动手|击杀|杀死)"
+)
+_ENGLISH_COMBAT_WORD = re.compile(
+    r"\b(?:attack(?:ing)?|fight(?:ing)?|shoot(?:ing)?|engag(?:e|ing)|open fire)\b",
+    flags=re.IGNORECASE,
+)
+_ENGLISH_NEGATED_COMBAT = re.compile(
+    r"\b(?:do\s+not|don't|will\s+not|won't|avoid|without|refuse\s+to|stop)\s+"
+    r"(?:unnecessary\s+|randomly\s+|actively\s+)?"
+    r"(?:attack(?:ing)?|fight(?:ing)?|shoot(?:ing)?|engag(?:e|ing)|open\s+fire)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _is_non_combat_declaration(text: object) -> bool:
+    """识别“声明不战斗”，但保留同一句中转而发动的真实攻击。
+
+    先删除明确被否定的战斗短语；若剩余文本仍有攻击词（例如“不射击，改用刀
+    攻击”），就仍视为战斗。这样无需不断添加整句白名单。
+    """
+    original = str(text or "").casefold()
+    compact = re.sub(r"\s+", "", original)
+    compact, chinese_count = _CHINESE_NEGATED_COMBAT.subn("", compact)
+    english, english_count = _ENGLISH_NEGATED_COMBAT.subn("", original)
+    if not (chinese_count or english_count):
+        return False
+    return not _CHINESE_COMBAT_WORD.search(compact) and not _ENGLISH_COMBAT_WORD.search(english)
 
 
 def _prompt_text(language: str) -> str:
@@ -72,10 +105,25 @@ def _planner_context(instance: GameInstance, rule: RuleSystem | None) -> str:
         "comparison": "roll_plus_modifier_gte_target",
         "critical": {"success": 20, "failure": 1},
     }
+    dice_system = str(rule.dice_system if rule else "d20").lower()
     attributes = [
         {"key": str(item.get("key") or ""), "name": str(item.get("name") or "")}
         for item in (rule.attributes if rule else [])
     ]
+    ruleset = {
+        "id": instance.rule_id,
+        "dice_system": dice_system,
+        "mechanic": mechanic,
+        "attributes": attributes,
+        "dc_table": rule.dc_table if rule else {"easy": 8, "normal": 10, "hard": 15},
+        "target_policy": (
+            "server_uses_character_sheet_percentile"
+            if dice_system == "d100"
+            else "gm_supplies_situational_dc"
+        ),
+    }
+    if dice_system == "d20":
+        ruleset["max_check_dc"] = d20_dc_cap(rule)
     payload = {
         "round": instance.round_number,
         "scene": str(instance.scene or "")[:500],
@@ -85,18 +133,7 @@ def _planner_context(instance: GameInstance, rule: RuleSystem | None) -> str:
             if entry.get("gm_response")
         ],
         "difficulty": instance.difficulty,
-        "ruleset": {
-            "id": instance.rule_id,
-            "dice_system": rule.dice_system if rule else "d20",
-            "mechanic": mechanic,
-            "attributes": attributes,
-            "dc_table": rule.dc_table if rule else {"easy": 8, "normal": 10, "hard": 15},
-            "target_policy": (
-                "server_uses_character_sheet_percentile"
-                if rule and str(rule.dice_system).lower() == "d100"
-                else "gm_supplies_situational_dc"
-            ),
-        },
+        "ruleset": ruleset,
         "players": players,
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -295,12 +332,17 @@ def normalize_check_specs(
             except (TypeError, ValueError):
                 errors.append(f"checks[{index}] target 无效")
                 continue
-            # DC 硬上限（规则 dc_table 最高档 + 5，默认 20）：
+            # DC 硬上限由规则显式配置（默认 20），不从难度档位表反推：
             # 防止后期情境报出 25–30 的失控 DC 导致“只有自然 20 才成功”。
             target = max(1, min(d20_dc_cap(rule), target))
         modifier = max(-20, min(20, int(raw.get("modifier", 0) or 0)))
         advantage = str(raw.get("advantage") or "normal")
-        advantage_mode = advantage if advantage in {"advantage", "disadvantage"} else ""
+        advantage_mode = (
+            advantage
+            if advantage in {"advantage", "disadvantage"}
+            and (rule is None or rule.supports_advantage_mode(advantage))
+            else ""
+        )
         kind = str(raw.get("kind") or "check")
         if kind not in {"check", "save", "attack"}:
             kind = "check"
@@ -321,8 +363,9 @@ def normalize_check_specs(
                 assistants.append(assistant_uid)
         if invalid_assistant:
             continue
-        if assistants and not advantage_mode and dice_system == "d20":
-            advantage_mode = "advantage"
+        assistance_grant = str(rule.advantage_mechanic.get("assistance_grants") or "") if rule else ""
+        if assistants and not advantage_mode and dice_system == "d20" and assistance_grant:
+            advantage_mode = assistance_grant
         request = {
             "check_id": uuid.uuid4().hex,
             "required": True,
@@ -359,6 +402,16 @@ def _merge_safety_net_checks(
     """
     if rule and str(rule.dice_system).lower() == "none":
         return planned
+    # 模型若把“不要开枪/避免交战”误标成 attack/combat，也先在这里撤掉；
+    # 同一句若还有未否定的攻击词，_is_non_combat_declaration 会保留该检定。
+    planned = [
+        (action, request)
+        for action, request in planned
+        if not (
+            (str(request.get("kind") or "") == "attack" or str(request.get("intent") or "") == "combat")
+            and _is_non_combat_declaration(action.get("text"))
+        )
+    ]
     planned_uids = {str(request.get("actor_uid") or "") for _, request in planned}
     for action in instance.action_queue:
         uid = str(action.get("user_id") or "")
@@ -382,16 +435,101 @@ def _merge_safety_net_checks(
             intent in {"investigate", "perception"}
             and any(word in text for word in _CONCEALED_OR_HAZARDOUS_WORDS)
         )
+        safety_intent = intent in _SAFETY_CHECK_INTENTS
+        if intent == "combat" and _is_non_combat_declaration(action.get("text")):
+            safety_intent = False
         if not (
             explicit_selection
             or skill_cue
-            or intent in _SAFETY_CHECK_INTENTS
+            or safety_intent
             or concealed_or_hazardous
         ):
             continue
         request["planner_source"] = "deterministic_safety_net"
         planned.append((action, request))
         planned_uids.add(uid)
+    return planned
+
+
+def _apply_d20_assistance(
+    instance: GameInstance,
+    rule: RuleSystem | None,
+    planned: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """把 Help/协助给被帮助者的主检定，而不是给帮助者自己。
+
+    模型工具仍可显式返回 ``assist``；此处只补足常见自然语言，并移除
+    “我专心协助某人”这类纯 Help 行动被安全网误判出的独立检定。
+    """
+    if not rule or rule.dice_system != "d20":
+        return planned
+    assistance_grant = str(rule.advantage_mechanic.get("assistance_grants") or "")
+    if assistance_grant not in {"advantage", "disadvantage"}:
+        return planned
+    action_by_uid = {
+        str(action.get("user_id") or ""): action
+        for action in instance.action_queue
+        if action.get("user_id") in instance.players
+    }
+    assistance: dict[str, list[str]] = {}
+    pure_helpers: set[str] = set()
+    for helper_uid, action in action_by_uid.items():
+        text = re.sub(r"\s+", "", str(action.get("text") or ""))
+        for target_uid, pdata in instance.players.items():
+            if target_uid == helper_uid:
+                continue
+            name = str(pdata.get("character_name") or "").strip()
+            if not name or name not in text:
+                continue
+            helps_target = (
+                f"协助{name}" in text
+                or f"帮助{name}" in text
+                or (f"为{name}" in text and "掩护" in text)
+            )
+            accepts_help = "接受" in text and any(word in text for word in ("协助", "帮助", "掩护", "指引"))
+            if helps_target:
+                assistance.setdefault(target_uid, []).append(helper_uid)
+                if text.startswith("我协助") or "我专心协助" in text or text.startswith(f"我为{name}"):
+                    pure_helpers.add(helper_uid)
+            elif accepts_help:
+                assistance.setdefault(helper_uid, []).append(target_uid)
+
+    result: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for action, request in planned:
+        actor_uid = str(request.get("actor_uid") or "")
+        if actor_uid in pure_helpers:
+            continue
+        assistants = list(request.get("assist") or [])
+        for assistant_uid in assistance.get(actor_uid, []):
+            if assistant_uid != actor_uid and assistant_uid not in assistants:
+                assistants.append(assistant_uid)
+        if assistants:
+            request["assist"] = assistants[:5]
+            if not request.get("advantage_mode"):
+                request["advantage_mode"] = assistance_grant
+                request["advantage_note"] = (
+                    "协助：2d20 取高" if assistance_grant == "advantage" else "协助：2d20 取低"
+                )
+        result.append((action, request))
+    return result
+
+
+def _apply_explicit_advantage_modes(
+    rule: RuleSystem | None,
+    planned: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """玩家明确写出的优势/劣势/奖惩骰覆盖模型的模糊推断。"""
+    if not rule:
+        return planned
+    for action, request in planned:
+        text = re.sub(r"\s+", "", str(action.get("text") or "")).casefold()
+        mode, note = detect_advantage_mode(text, action, rule)
+        if mode or "已抵消" in note:
+            request["advantage_mode"] = mode
+            request["advantage_note"] = note or None
+            # 奖惩骰本身已经表达情境，不再同时套模型猜出的 ±百分比修正。
+            if rule.advantage_mechanic.get("type") == "coc_bonus_penalty":
+                request["circumstance_modifier"] = 0
     return planned
 
 
@@ -443,6 +581,8 @@ async def plan_round_checks(
             logger.warning("overreach 标注解析失败，已忽略 (round=%d)", instance.round_number, exc_info=True)
     planned, errors = normalize_check_specs(instance, rule, raw_checks)
     planned = _merge_safety_net_checks(instance, rule, planned)
+    planned = _apply_explicit_advantage_modes(rule, planned)
+    planned = _apply_d20_assistance(instance, rule, planned)
     return planned, {
         "available": True,
         "native_tools": response.native_tools,

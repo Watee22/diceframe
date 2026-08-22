@@ -176,7 +176,7 @@ def audit_api(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_full_create_round_payment_swipe_restart_reset_contract(audit_api):
+async def test_full_create_round_payment_swipe_restart_reset_contract(audit_api, monkeypatch):
     api, registry, llm = audit_api
     created = await api.create_game(
         "audit_world",
@@ -224,6 +224,10 @@ async def test_full_create_round_payment_swipe_restart_reset_contract(audit_api)
         f"XP:{uid_gm}:10\n"
         "QUICK_ACTIONS:搜索|撤退"
     )
+
+    # 这条契约要验证“失败检定后的伤害”与 swipe 回滚；固定骰值可避免
+    # 随机成功时伤害防护正确丢弃 HP 标签，反而让契约测试偶发失败。
+    monkeypatch.setattr("random.randint", lambda _low, _high: 1)
 
     # 多人提交：所有存活角色（含 GM 绑定角色）提交后推进。
     await inst.add_action(uid_gm, "我稳住落石并保护队友", selected_attribute="str", selected_skill="体能")

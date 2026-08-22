@@ -18,6 +18,20 @@ LENGTH_RETRY_FACTOR = 2    # finish_reason=length 时重试放大 max_tokens 的
 LENGTH_RETRY_MAX_MULT = 4  # 最大放大到原始 max_tokens 的多少倍
 
 
+def _disable_thinking_for_deepseek_v4(provider: "ProviderConfig") -> bool:
+    """DiceFrame 对官方 DeepSeek V4 使用非思考模式。
+
+    DeepSeek V4 默认开启思考模式；当前客户端不消费 ``reasoning_content``，
+    该模式还不接受强制 ``tool_choice``，会让普通正文和严格 JSON 的输出预算
+    被推理耗尽。仅针对官方端点和 V4 模型显式关闭，避免向其他 OpenAI 兼容
+    供应商发送私有参数。
+    """
+    return (
+        provider.model_name.strip().lower().startswith("deepseek-v4")
+        and "api.deepseek.com" in provider.base_url.strip().lower()
+    )
+
+
 def length_retry_budgets(base_max_tokens: int) -> tuple[int, ...]:
     """返回输出截断时共用的 token 预算序列。"""
     if base_max_tokens <= 0:
@@ -270,6 +284,8 @@ class LLMClient:
             "max_tokens": max_tokens,
             "tools": tools,
         }
+        if _disable_thinking_for_deepseek_v4(provider):
+            body["thinking"] = {"type": "disabled"}
         if force_tool_choice:
             body["tool_choice"] = {
                 "type": "function",
@@ -599,6 +615,8 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if _disable_thinking_for_deepseek_v4(provider):
+            body["thinking"] = {"type": "disabled"}
         # JSON 模式：DeepSeek/OpenAI 兼容的 structured output
         if json_mode:
             body["response_format"] = {"type": "json_object"}
@@ -732,6 +750,8 @@ class LLMClient:
             "stream": True,
             "stream_options": {"include_usage": True},
         }
+        if _disable_thinking_for_deepseek_v4(provider):
+            body["thinking"] = {"type": "disabled"}
         # JSON 模式：DeepSeek/OpenAI 兼容的 structured output
         if json_mode:
             body["response_format"] = {"type": "json_object"}

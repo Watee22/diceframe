@@ -1,5 +1,7 @@
 ﻿"""骰子系统测试。"""
 
+from types import SimpleNamespace
+
 import pytest
 from src.engine.dice import (
     DiceResult,
@@ -12,6 +14,7 @@ from src.engine.dice import (
     d20_dc_cap,
     parse_player_roll,
     roll,
+    roll_initiative,
 )
 
 
@@ -49,6 +52,8 @@ class TestRoll:
             roll("0d6")
         with pytest.raises(ValueError):
             roll("d1")
+        with pytest.raises(ValueError):
+            roll("d20+101")
 
     def test_multi_dice_natural_excludes_modifier(self, monkeypatch):
         """natural 是未加修正的原始值：多骰=骰面之和，不含修正。"""
@@ -80,6 +85,13 @@ class TestCheckD20:
         monkeypatch.setattr("random.randint", lambda a, b: 8)
         result, verdict = check_d20(modifier=2, dc=15)
         assert verdict == "失败"
+
+    def test_natural_twenty_can_be_disabled_for_strict_rules(self, monkeypatch):
+        monkeypatch.setattr("random.randint", lambda a, b: 20)
+        result, verdict = check_d20(modifier=2, dc=25, crit_on=None, fumble_on=None)
+        assert result.total == 22
+        assert verdict == "失败"
+        assert not result.is_critical
 
     def test_advantage_uses_higher_d20(self, monkeypatch):
         rolls = iter([7, 18])
@@ -177,6 +189,7 @@ class TestCheckD100Bonus:
         monkeypatch.setattr("random.randint", lambda a, b: next(rolls))
         result, verdict = check_d100_bonus(threshold=50, bonus_dice=1)
         assert result.total == 30
+        assert result.rolls == [100, 30]
         assert verdict == "普通成功"
 
     def test_penalty_with_zero_units_picks_hundred(self, monkeypatch):
@@ -184,11 +197,35 @@ class TestCheckD100Bonus:
         monkeypatch.setattr("random.randint", lambda a, b: next(rolls))
         result, verdict = check_d100_bonus(threshold=50, penalty_dice=1)
         assert result.total == 100
+        assert result.rolls == [100, 30]
         assert verdict == "大失败"
+
+    def test_rejects_unbounded_bonus_dice(self):
+        with pytest.raises(ValueError):
+            check_d100_bonus(threshold=50, bonus_dice=101)
 
 
 def test_d20_dc_cap_default():
     assert d20_dc_cap(None) == 20
+
+
+def test_d20_dc_cap_does_not_infer_from_high_dc_table():
+    rule = SimpleNamespace(dc_table={"easy": 10, "extreme": 25})
+    assert d20_dc_cap(rule) == 20
+
+
+def test_d20_dc_cap_allows_bounded_custom_override():
+    assert d20_dc_cap(SimpleNamespace(max_check_dc=30)) == 30
+    assert d20_dc_cap(SimpleNamespace(max_check_dc=999)) == 40
+    assert d20_dc_cap(SimpleNamespace(max_check_dc="invalid")) == 20
+
+
+def test_roll_initiative_preserves_dex_modifier(monkeypatch):
+    monkeypatch.setattr("random.randint", lambda a, b: 12)
+    result = roll_initiative(3)
+    assert result.natural == 12
+    assert result.modifier == 3
+    assert result.total == 15
 
 
 class TestCheckCoc:

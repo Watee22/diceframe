@@ -8,7 +8,7 @@ from typing import Any
 
 from src.commands.protocol_repair import repair_malformed_protocol_response
 from src.commands.round_actions import format_check_results_constraint
-from src.commands.state_update_applier import StateUpdateApplier
+from src.commands.state_update_applier import StateUpdateApplier, discard_unresolved_player_damage
 from src.commands.tag_parser import parse_tag_state
 from src.engine.game_instance import GameInstance, restore_players
 from src.llm.parser import normalize_tag_protocol, sanitize_narration
@@ -119,6 +119,7 @@ class SwipeGenerator:
         data = parse_tag_state(response.content, combat_model_s)
 
         if data.get("state_update"):
+            discard_unresolved_player_damage(instance, data.get("state_update", {}))
             self.state_applier.apply_state_update(instance, data.get("state_update", {}))
         if data.get("plot_update") and instance.plot_tracker:
             try:

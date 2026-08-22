@@ -59,6 +59,39 @@ def test_tavern_rule_never_requests_a_roll():
     ) is None
 
 
+def test_legacy_coc_entry_does_not_replace_round_action_queue(monkeypatch):
+    class GuardedGameInstance(GameInstance):
+        guard_action_queue = False
+
+        def __setattr__(self, name, value):
+            if name == "action_queue" and self.guard_action_queue:
+                raise AssertionError("骰子适配器不得替换回合行动队列")
+            super().__setattr__(name, value)
+
+    instance = GuardedGameInstance(("web", "legacy-coc", "bot"))
+    instance.players["p1"] = {
+        "character_name": "调查员",
+        "character_sheet": {
+            "attributes": {"int": 60},
+            "skills": [{"name": "侦查", "value": 45}],
+        },
+    }
+    instance.action_queue.append({"user_id": "p1", "text": "原始行动"})
+    instance.guard_action_queue = True
+    monkeypatch.setattr("src.engine.dice_rng.random.randint", lambda _a, _b: 30)
+
+    block = DiceResolver().roll_coc_check(
+        instance,
+        "p1",
+        instance.players["p1"],
+        {"int": 60},
+        {"name": "侦查", "value": 45},
+    )
+
+    assert "d100=30" in block
+    assert instance.action_queue == [{"user_id": "p1", "text": "原始行动"}]
+
+
 def test_confirmed_roll_is_reused_without_a_second_random_roll(monkeypatch):
     instance, rule = _coc_instance()
     request = build_check_request(
@@ -74,7 +107,7 @@ def test_confirmed_roll_is_reused_without_a_second_random_roll(monkeypatch):
         "dice_rolls": [54],
         "dice_pending": False,
     }]
-    monkeypatch.setattr("src.engine.dice.random.randint", lambda *_: pytest.fail("不得二次掷骰"))
+    monkeypatch.setattr("src.engine.dice_rng.random.randint", lambda *_: pytest.fail("不得二次掷骰"))
 
     block = build_dice_constraint_block(instance, collect_actions_text(instance), rule, "d100", DiceResolver())
 
@@ -194,6 +227,103 @@ def test_d20_advantage_reuses_both_confirmed_rolls():
     assert instance.last_check["rolls"] == [4, 17]
     assert instance.last_check["roll"] == 17
     assert instance.last_check["advantage_mode"] == "advantage"
+
+
+def test_late_game_d20_target_is_capped_and_nineteen_can_succeed() -> None:
+    instance = GameInstance(("web", "room", "bot"))
+    instance.players["p1"] = {
+        "character_name": "Rogue",
+        "character_sheet": {
+            "attributes": {"dex": 16},
+            "skills": [],
+        },
+    }
+    action = {
+        "user_id": "p1",
+        "text": "强行打开机关门",
+        "check_request": {
+            "actor_uid": "p1",
+            "dice_system": "d20",
+            "attribute": "dex",
+            "target": 30,
+        },
+        "dice_value": 19,
+        "dice_rolls": [19],
+    }
+    rule = RuleSystem.load(Path("templates/rules/dnd5e.json"))
+
+    DiceResolver().resolve_action_check(instance, action, rule)
+
+    assert instance.last_check["dc"] == 20
+    assert instance.last_check["total"] == 22
+    assert instance.last_check["verdict"] == "成功"
+
+
+def test_confirmed_d20_without_target_still_uses_dc_cap() -> None:
+    instance = GameInstance(("web", "room", "bot"))
+    instance.players["p1"] = {
+        "character_name": "Rogue",
+        "character_sheet": {"attributes": {"dex": 16}, "skills": []},
+    }
+    action = {
+        "user_id": "p1",
+        "text": "尝试兼容路径检定",
+        "check_request": {
+            "actor_uid": "p1",
+            "dice_system": "d20",
+            "attribute": "dex",
+        },
+        "dice_value": 19,
+        "dice_rolls": [19],
+    }
+    rule = RuleSystem({
+        "rule_id": "high_default_dc",
+        "dice_system": "d20",
+        "max_check_dc": 20,
+        "dc_table": {"normal": 30},
+    })
+
+    DiceResolver().resolve_action_check(instance, action, rule)
+
+    assert instance.last_check["dc"] == 20
+    assert instance.last_check["total"] == 22
+    assert instance.last_check["verdict"] == "成功"
+
+
+def test_custom_d20_rule_can_disable_natural_twenty_auto_success() -> None:
+    instance = GameInstance(("web", "room", "bot"))
+    instance.players["p1"] = {
+        "character_name": "Investigator",
+        "character_sheet": {"attributes": {"dex": 14}, "skills": []},
+    }
+    action = {
+        "user_id": "p1",
+        "text": "尝试完成严格规则检定",
+        "check_request": {
+            "actor_uid": "p1",
+            "dice_system": "d20",
+            "attribute": "dex",
+            "target": 25,
+        },
+        "dice_value": 20,
+        "dice_rolls": [20],
+    }
+    rule = RuleSystem({
+        "rule_id": "strict_d20",
+        "dice_system": "d20",
+        "max_check_dc": 30,
+        "check_mechanic": {
+            "dice": "d20",
+            "comparison": "roll_plus_modifier_gte_target",
+            "critical": {},
+        },
+    })
+
+    DiceResolver().resolve_action_check(instance, action, rule)
+
+    assert instance.last_check["total"] == 22
+    assert instance.last_check["dc"] == 25
+    assert instance.last_check["verdict"] == "失败"
 
 
 class _Registry:

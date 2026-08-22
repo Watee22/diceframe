@@ -1,13 +1,16 @@
 {
   "language": "en",
   "extends": "base_d20",
-  "rule_version": "1.1",
+  "rule_version": "1.2",
   "rule_id": "dnd5e",
   "scene_image": {"kind": "builtin", "id": "dnd5e"},
   "rule_name": "D&D 5e SRD-inspired Lite",
   "description": "A lightweight assisted rule inspired by D&D 5e SRD: 12 classes, proficiency bonus, d20 checks, and simplified combat; suited for narrative play, not a full RAW recreation.",
   "mechanics": "dnd5e_core",
   "ruleset_level": "assisted",
+  "check_mechanic": {
+    "critical": {"success": null, "failure": null}
+  },
   "dc_table": {
     "easy": 10,
     "normal": 15,

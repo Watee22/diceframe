@@ -663,6 +663,13 @@ async def generate_rule(
     data.setdefault("rule_version", "1.0-ai")
     data.setdefault("ruleset_level", "assisted")
     data.setdefault("dice_system", source_rule.get("dice_system", "d20"))
+    if str(data["dice_system"]).lower() == "d20":
+        data.setdefault("max_check_dc", source_rule.get("max_check_dc", 20))
+        data.setdefault("check_mechanic", source_rule.get("check_mechanic", {
+            "dice": "d20",
+            "comparison": "roll_plus_modifier_gte_target",
+            "critical": {"success": 20, "failure": 1},
+        }))
     data.setdefault("combat_model", source_rule.get("combat_model", "hp_based"))
     data.setdefault("mechanics", "ai_custom_lite")
     data.setdefault("attributes", source_rule.get("attributes", []))

@@ -6,9 +6,7 @@
 
 from __future__ import annotations
 
-import random
-
-from src.engine.dice_rng import DiceResult, roll
+from src.engine.dice_rng import MAX_DICE_COUNT, DiceResult, roll, roll_die
 
 
 def coc_success_level(roll_value: int, threshold: int) -> str:
@@ -52,20 +50,24 @@ def check_d100_bonus(threshold: int, bonus_dice: int = 0, penalty_dice: int = 0)
     """
     if bonus_dice < 0 or penalty_dice < 0:
         raise ValueError("奖励骰和惩罚骰数量不能为负数")
+    if bonus_dice > MAX_DICE_COUNT or penalty_dice > MAX_DICE_COUNT:
+        raise ValueError(f"奖励骰和惩罚骰数量不能超过 {MAX_DICE_COUNT}")
     if bonus_dice and penalty_dice:
         cancel_count = min(bonus_dice, penalty_dice)
         bonus_dice -= cancel_count
         penalty_dice -= cancel_count
     threshold = max(1, min(99, int(threshold)))
-    units = random.randint(0, 9)
+    units = roll_die(10, zero_based=True)
     extra_count = max(bonus_dice, penalty_dice)
-    all_tens = [random.randint(0, 9) * 10 for _ in range(1 + extra_count)]
+    all_tens = [roll_die(10, zero_based=True) * 10 for _ in range(1 + extra_count)]
     # 先构造每个组合的最终值（00+0 = 100），再按奖惩取最高/最低；
     # 旧实现先对十位取 min/max 再转换 100，会把奖惩结果完全反转。
     candidates = [100 if (ten + units) == 0 else ten + units for ten in all_tens]
     total = max(candidates) if penalty_dice > 0 else min(candidates)
     verdict = coc_success_level(total, threshold)
-    result = DiceResult(formula="d100", rolls=[total], modifier=0,
+    # rolls 保存所有共享个位数组合的最终候选值，便于 UI/审计证明奖惩骰
+    # 确实是“同一个位 + 多个十位”，而不是简单掷两次完整 d100。
+    result = DiceResult(formula="d100", rolls=candidates, modifier=0,
                         total=total, natural=total,
                         is_critical=(verdict == "大成功"), is_fumble=(verdict == "大失败"))
     return result, verdict

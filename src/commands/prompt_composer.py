@@ -88,7 +88,19 @@ class PromptComposer:
         instance: GameInstance,
         load_world_template: Callable[[str], dict],
     ) -> RulePromptContext:
-        """加载世界默认规则，并构造规则 prompt 附录。失败时保持旧行为：静默回退默认值。"""
+        """加载存档实际选择的规则，并构造规则 prompt 附录。
+
+        ``instance.rule_id`` 是开档时已经确定的权威规则。世界模板里的
+        ``default_rule`` 只负责创建页默认选择，不能在运行时把用户选择的
+        D&D/CoC 规则悄悄换回世界默认规则。
+        """
+        return self._load_rule_context(instance, load_world_template)
+
+    def _load_rule_context(
+        self,
+        instance: GameInstance,
+        load_world_template: Callable[[str], dict],
+    ) -> RulePromptContext:
         ctx = RulePromptContext()
         if not instance.world_id:
             return ctx
@@ -96,10 +108,18 @@ class PromptComposer:
             world_data = load_world_template(instance.world_id)
             ctx.world_data = world_data
             if world_data:
-                rule = RuleSystem.load_for_world(world_data, self.rules_dir)
+                language = getattr(instance, "language", DEFAULT_LANGUAGE)
+                rule = None
+                active_rule_id = str(getattr(instance, "rule_id", "") or "").strip()
+                if active_rule_id:
+                    active_path = RuleSystem.path_for(self.rules_dir, active_rule_id, language)
+                    if active_path.exists():
+                        rule = RuleSystem.load(active_path)
+                # 插件规则不一定在内置 rules_dir；缺失时仍由世界贡献路径兜底。
+                if rule is None:
+                    rule = RuleSystem.load_for_world(world_data, self.rules_dir)
                 if rule:
                     ctx.rule = rule
-                    language = getattr(instance, "language", DEFAULT_LANGUAGE)
                     ctx.rule_appendix = rule.get_gm_prompt_appendix(language)
                     ctx.combat_model = rule.combat_model
                     ctx.dice_system = rule.dice_system
@@ -118,30 +138,8 @@ class PromptComposer:
         instance: GameInstance,
         load_world_template: Callable[[str], dict],
     ) -> RulePromptContext:
-        """加载 swipe 重生成用规则上下文，保持原先按 rule_path 读取的行为。"""
-        ctx = RulePromptContext()
-        if not instance.world_id:
-            return ctx
-        try:
-            world_data = load_world_template(instance.world_id)
-            ctx.world_data = world_data
-            if world_data:
-                rule = RuleSystem.load_for_world(world_data, self.rules_dir)
-                if rule:
-                    ctx.rule = rule
-                    language = getattr(instance, "language", DEFAULT_LANGUAGE)
-                    ctx.rule_appendix = rule.get_gm_prompt_appendix(language)
-                    ctx.combat_model = rule.combat_model
-                    ctx.dice_system = rule.dice_system
-                    difficulty_text = rule.get_difficulty_instructions(instance.difficulty, language)
-                    if difficulty_text:
-                        ctx.rule_appendix += "\n\n" + difficulty_text
-                    stat_appendix = rule.resource_tag_appendix(language)
-                    if stat_appendix:
-                        ctx.rule_appendix += "\n\n" + stat_appendix
-        except Exception:
-            logger.warning("swipe 规则上下文加载失败，回退默认值: world_id=%s", instance.world_id, exc_info=True)
-        return ctx
+        """swipe 与正常回合必须使用同一套存档规则。"""
+        return self._load_rule_context(instance, load_world_template)
 
     def compose_gm_prompt(self, instance: GameInstance, rule_appendix: str = "") -> str:
         """构造系统 prompt：基础 prompt + 规则附录 + 剧情追踪 + 多人权限范围。"""

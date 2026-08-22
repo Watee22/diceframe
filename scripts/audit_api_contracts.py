@@ -45,6 +45,8 @@ STREAM_ENDPOINTS = {
 }
 
 BINARY_ENDPOINTS = {
+    "/api/asr/test",
+    "/api/games/{game_key}/transcription",
     "/api/tts/test",
     "/api/games/{game_key}/speech",
 }

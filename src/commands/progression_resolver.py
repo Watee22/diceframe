@@ -21,6 +21,34 @@ class ProgressionResolver:
         self.rules_dir = rules_dir
         self.worlds_dir = worlds_dir
 
+    def _active_rule(self, instance: GameInstance) -> RuleSystem | None:
+        """成长必须跟随存档选择的规则，而不是世界创建页的默认规则。"""
+        rule_id = str(getattr(instance, "rule_id", "") or "").strip()
+        if rule_id:
+            rule_path = RuleSystem.path_for(
+                self.rules_dir, rule_id, getattr(instance, "language", "")
+            )
+            if rule_path.exists():
+                return RuleSystem.load(rule_path)
+        if instance.world_id and self.worlds_dir:
+            world_path = world_template_path(self.worlds_dir, instance.world_id)
+            return RuleSystem.load_for_world_path(world_path, self.rules_dir)
+        return None
+
+    @staticmethod
+    def _level_hp_gain(rule: RuleSystem, character_sheet: dict) -> int:
+        """计算本级 HP 增量；D&D 5e 使用职业生命骰固定平均值。"""
+        if rule.mechanics != "dnd5e_core":
+            return 5
+        class_name = str(character_sheet.get("class") or "")
+        hp_die = next(
+            (int(item.get("hp_die", 8) or 8) for item in rule.classes if item.get("name") == class_name),
+            8,
+        )
+        con = int((character_sheet.get("attributes") or {}).get("con", 10) or 10)
+        con_mod = (con - 10) // 2
+        return max(1, hp_die // 2 + 1 + con_mod)
+
     def skill_growth_checks(self, instance: GameInstance, growth_skills: list[dict]) -> None:
         """CoC 技能成长检定：检定成功使用的技能有概率成长。
 
@@ -76,15 +104,14 @@ class ProgressionResolver:
             cs["level_up_points"] = cs.get("level_up_points", 0) + 2
             cs["attr_points_max"] = cs.get("attr_points_max", 60) + 2
             try:
-                if instance.world_id and self.worlds_dir:
-                    world_path = world_template_path(self.worlds_dir, instance.world_id)
-                    rule = RuleSystem.load_for_world_path(world_path, self.rules_dir)
-                    if rule:
-                        base_hp = rule.calculate_hp(cs.get("attributes", {}), cs.get("class", ""))
-                        new_hp = max(base_hp, cs.get("max_hp", 0)) + 5
+                rule = self._active_rule(instance)
+                if rule:
+                    if rule.mechanics == "dnd5e_core":
+                        new_hp = int(cs.get("max_hp", 0) or 0) + self._level_hp_gain(rule, cs)
                         set_hp(cs, new_hp, new_hp)
                     else:
-                        new_hp = cs.get("max_hp", 0) + 10
+                        base_hp = rule.calculate_hp(cs.get("attributes", {}), cs.get("class", ""))
+                        new_hp = max(base_hp, cs.get("max_hp", 0)) + 5
                         set_hp(cs, new_hp, new_hp)
                 else:
                     new_hp = cs.get("max_hp", 0) + 10

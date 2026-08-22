@@ -19,6 +19,7 @@ from src.engine.language import (
 )
 
 logger = logging.getLogger("trpg")
+SUPPORTED_DICE_SYSTEMS = frozenset({"d20", "d100", "none"})
 
 # 安全的数学表达式求值 —— 仅允许数字和基本算术运算
 _SAFE_OPS: dict[type, Callable] = {
@@ -133,6 +134,10 @@ class RuleSystem:
         self.template = template
         self.rule_id: str = template["rule_id"]
         self.rule_name: str = template.get("rule_name", self.rule_id)
+        self._dice_system = str(template.get("dice_system") or "d20").lower()
+        if self._dice_system not in SUPPORTED_DICE_SYSTEMS:
+            supported = ", ".join(sorted(SUPPORTED_DICE_SYSTEMS))
+            raise ValueError(f"不支持的检定骰制: {self._dice_system}（当前支持 {supported}）")
 
     @classmethod
     def load(cls, path: str | Path) -> "RuleSystem":
@@ -297,7 +302,7 @@ class RuleSystem:
 
     @property
     def dice_system(self) -> str:
-        return self.template.get("dice_system", "d20")
+        return self._dice_system
 
     @property
     def check_mechanic(self) -> dict:
@@ -309,7 +314,7 @@ class RuleSystem:
             return {
                 "dice": "d100",
                 "comparison": "roll_lte_target",
-                "critical": {"success_max": 5, "failure_min": 96},
+                "critical": {"success": 1, "failure_rule": "coc7e"},
             }
         if self.dice_system == "none":
             return {"dice": "none", "comparison": "none", "critical": {}}
@@ -318,6 +323,50 @@ class RuleSystem:
             "comparison": "roll_plus_modifier_gte_target",
             "critical": {"success": 20, "failure": 1},
         }
+
+    @property
+    def advantage_mechanic(self) -> dict:
+        """返回奖惩骰/优势能力声明，并兼容尚未升级的旧规则模板。
+
+        ``type`` 目前支持 ``d20_keep_high_low`` 与
+        ``coc_bonus_penalty``；空字符串表示规则不提供该能力。
+        ``assistance_grants`` 用来声明多人协助如何影响主检定。
+        """
+        declared = self.check_mechanic.get("advantage")
+        if isinstance(declared, dict):
+            kind = str(declared.get("type") or "").strip()
+            assistance = str(declared.get("assistance_grants") or "").strip()
+            return {
+                "type": kind,
+                "allow_explicit": bool(declared.get("allow_explicit", bool(kind))),
+                "assistance_grants": assistance if assistance in {"advantage", "disadvantage"} else "",
+            }
+
+        # 旧插件没有声明 capability 时保持原行为；新模板应显式配置，避免
+        # 上层再根据 rule_id/mechanics 猜测规则能力。
+        if self.mechanics == "coc7e_core" or bool(self.template.get("bonus_dice")):
+            return {
+                "type": "coc_bonus_penalty",
+                "allow_explicit": True,
+                "assistance_grants": "",
+            }
+        if self.mechanics == "dnd5e_core":
+            return {
+                "type": "d20_keep_high_low",
+                "allow_explicit": True,
+                "assistance_grants": "advantage",
+            }
+        return {"type": "", "allow_explicit": False, "assistance_grants": ""}
+
+    def supports_advantage_mode(self, mode: str) -> bool:
+        """规则是否允许结构化请求使用 advantage/disadvantage。"""
+        return (
+            str(mode or "") in {"advantage", "disadvantage"}
+            and self.advantage_mechanic.get("type") in {
+                "d20_keep_high_low",
+                "coc_bonus_penalty",
+            }
+        )
 
     @property
     def combat_model(self) -> str:
@@ -351,6 +400,15 @@ class RuleSystem:
     @property
     def dc_table(self) -> dict[str, int]:
         return self.template.get("dc_table", {"easy": 10, "normal": 15, "hard": 20, "extreme": 25})
+
+    @property
+    def max_check_dc(self) -> int:
+        """AI 情境 d20 检定上限；规则可显式配置 1..40，默认 20。"""
+        try:
+            value = int(self.template.get("max_check_dc", 20))
+        except (TypeError, ValueError):
+            value = 20
+        return max(1, min(40, value))
 
     @property
     def difficulty_dc_modifiers(self) -> dict[str, int]:

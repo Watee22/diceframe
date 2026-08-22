@@ -1,7 +1,7 @@
 {
   "language": "en",
   "extends": "base_d20",
-  "rule_version": "1.1",
+  "rule_version": "1.2",
   "rule_id": "freeform_wuxia",
   "scene_image": {"kind": "builtin", "id": "freeform_wuxia"},
   "rule_name": "Wuxia/Xianxia Freeform",

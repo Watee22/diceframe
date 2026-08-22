@@ -1,6 +1,6 @@
 {
   "extends": "intents_base",
-  "rule_version": "1.2",
+  "rule_version": "1.3",
   "rule_id": "freeform_coc",
   "scene_image": {"kind": "builtin", "id": "freeform_coc"},
   "rule_name": "CoC 7e 调查恐怖轻量规则",
@@ -24,6 +24,16 @@
   "attribute_points": 460,
   "attr_hint": "CoC 7版风格使用百分制属性。STR/CON/DEX/APP/POW 通常为 3d6×5，SIZ/INT/EDU 通常为 (2d6+6)×5；快速建卡可按总和约 460 分配。",
   "dice_system": "d100",
+  "check_mechanic": {
+    "dice": "d100",
+    "comparison": "roll_lte_target",
+    "critical": {"success": 1, "failure_rule": "coc7e"},
+    "advantage": {
+      "type": "coc_bonus_penalty",
+      "allow_explicit": true,
+      "assistance_grants": ""
+    }
+  },
   "combat_model": "lethal_narrative",
   "growth_system": "skill_improvement",
   "bonus_dice": true,

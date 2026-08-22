@@ -7,22 +7,71 @@ D&D 规则宣传。
 
 from __future__ import annotations
 
-import random
+from src.engine.dice_rng import DiceResult, roll, roll_die
 
-from src.engine.dice_rng import DiceResult, roll
+
+DEFAULT_D20_DC_CAP = 20
+MAX_D20_DC_CAP = 40
 
 
 def d20_dc_cap(rule: object) -> int:
-    """d20 情境 DC 的硬上限：规则 dc_table 最高档 + 5，默认 20。
+    """d20 情境 DC 的硬上限，默认 20，可由规则显式提高到 40。
 
-    防止 AI 裁判后期报出 25–30 的失控 DC 导致“只有自然 20 才成功”。
+    难度档位表只描述推荐值，不能反向推导安全上限；否则内置规则的
+    ``extreme=25`` 会把上限错误推高到 30，重现“只有自然 20 才成功”。
     """
-    table = getattr(rule, "dc_table", None) if rule is not None else None
-    values = [int(v) for v in table.values() if isinstance(v, (int, float))] if isinstance(table, dict) else []
-    return (max(values) if values else 15) + 5
+    raw_cap = getattr(rule, "max_check_dc", DEFAULT_D20_DC_CAP) if rule is not None else DEFAULT_D20_DC_CAP
+    try:
+        cap = int(raw_cap)
+    except (TypeError, ValueError):
+        cap = DEFAULT_D20_DC_CAP
+    return max(1, min(MAX_D20_DC_CAP, cap))
 
 
-def check_d20(modifier: int = 0, dc: int = 10, crit_on: int = 20, fumble_on: int = 1) -> tuple[DiceResult, str]:
+def d20_critical_thresholds(rule: object) -> tuple[int | None, int | None]:
+    """从规则元数据读取 d20 大成功/大失败阈值；空配置可禁用房规。"""
+    mechanic = getattr(rule, "check_mechanic", None) if rule is not None else None
+    if not isinstance(mechanic, dict):
+        return 20, 1
+    critical = mechanic.get("critical")
+    if not isinstance(critical, dict):
+        return 20, 1
+
+    def threshold(name: str) -> int | None:
+        raw = critical.get(name)
+        if raw is None:
+            return None
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return None
+        return value if 1 <= value <= 20 else None
+
+    return threshold("success"), threshold("failure")
+
+
+def d20_verdict(
+    natural: int,
+    total: int,
+    dc: int,
+    *,
+    crit_on: int | None = 20,
+    fumble_on: int | None = 1,
+) -> str:
+    """按规则阈值结算已掷出的 d20；阈值为 None 时只比较总值与 DC。"""
+    if crit_on is not None and crit_on <= natural <= 20:
+        return "大成功"
+    if fumble_on is not None and 1 <= natural <= fumble_on:
+        return "大失败"
+    return "成功" if total >= dc else "失败"
+
+
+def check_d20(
+    modifier: int = 0,
+    dc: int = 10,
+    crit_on: int | None = 20,
+    fumble_on: int | None = 1,
+) -> tuple[DiceResult, str]:
     """d20 属性检定，返回 (结果, "成功"/"失败"/"大成功"/"大失败")。
 
     娱乐化房规：自然 20/1 走大成功/大失败通道（见模块 docstring）。
@@ -34,13 +83,12 @@ def check_d20(modifier: int = 0, dc: int = 10, crit_on: int = 20, fumble_on: int
         fumble_on: 大失败阈值（默认 1，硬核模式可升为 2）
     """
     result = roll(f"d20{modifier:+d}" if modifier else "d20")
-    if crit_on <= result.natural <= 20:
-        result.is_critical = True
-        return result, "大成功"
-    if 1 <= result.natural <= fumble_on:
-        result.is_fumble = True
-        return result, "大失败"
-    return result, "成功" if result.total >= dc else "失败"
+    verdict = d20_verdict(
+        result.natural, result.total, dc, crit_on=crit_on, fumble_on=fumble_on,
+    )
+    result.is_critical = verdict == "大成功"
+    result.is_fumble = verdict == "大失败"
+    return result, verdict
 
 
 def check_d20_advantage(
@@ -49,8 +97,8 @@ def check_d20_advantage(
     *,
     advantage: bool = False,
     disadvantage: bool = False,
-    crit_on: int = 20,
-    fumble_on: int = 1,
+    crit_on: int | None = 20,
+    fumble_on: int | None = 1,
 ) -> tuple[DiceResult, str]:
     """d20 优势/劣势检定（借鉴 D&D 优势/劣势机制的娱乐房规）。
 
@@ -62,7 +110,7 @@ def check_d20_advantage(
     if not advantage and not disadvantage:
         return check_d20(modifier=modifier, dc=dc, crit_on=crit_on, fumble_on=fumble_on)
 
-    rolls = [random.randint(1, 20), random.randint(1, 20)]
+    rolls = [roll_die(20), roll_die(20)]
     natural = max(rolls) if advantage else min(rolls)
     total = natural + modifier
     mode = "kh1" if advantage else "kl1"
@@ -72,11 +120,9 @@ def check_d20_advantage(
         modifier=modifier,
         total=total,
         natural=natural,
-        is_critical=crit_on <= natural <= 20,
-        is_fumble=1 <= natural <= fumble_on,
+        is_critical=crit_on is not None and crit_on <= natural <= 20,
+        is_fumble=fumble_on is not None and 1 <= natural <= fumble_on,
     )
-    if result.is_critical:
-        return result, "大成功"
-    if result.is_fumble:
-        return result, "大失败"
-    return result, "成功" if total >= dc else "失败"
+    return result, d20_verdict(
+        natural, total, dc, crit_on=crit_on, fumble_on=fumble_on,
+    )

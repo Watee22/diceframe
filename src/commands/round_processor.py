@@ -37,8 +37,9 @@ from src.commands.round_actions import (
     initialize_puzzles_from_lorebook,
 )
 from src.commands.state_recap import snapshot_public_player_state
+from src.commands.state_update_applier import discard_unresolved_player_damage
 from src.commands.tag_summary import summarize_tags
-from src.engine.constants import COMBAT_INTENT_KEYWORDS
+from src.engine.constants import COMBAT_ATTACK_KEYWORDS, COMBAT_INTENT_KEYWORDS
 from src.engine.game_instance import GameInstance, GameState, _snapshot_players
 from src.engine.language import localized_text
 from src.memory.summarizer import needs_summary, summarize
@@ -297,7 +298,12 @@ class RoundProcessor:
         if dice_block:
             actions_text += dice_block
 
-        if any(kw in actions_text for kw in COMBAT_INTENT_KEYWORDS):
+        explicit_attack = any(
+            any(keyword in str(action.get("text") or "") for keyword in COMBAT_ATTACK_KEYWORDS)
+            for action in instance.action_queue
+            if action.get("user_id") in instance.players
+        )
+        if instance.combat_state != "none" or explicit_attack:
             combat_text = self._combat.resolve_combat(instance, actions_text, combat_model)
             if combat_text:
                 actions_text = combat_text + "\n" + actions_text
@@ -328,6 +334,7 @@ class RoundProcessor:
             self.llm_client, instance, gm_prompt, context, combat_model,
             dice_block, self.narrative_max_tokens, actions_text,
             on_delta=on_delta, on_reset=on_reset)
+        discard_unresolved_player_damage(instance, data.get("state_update", {}))
         initial_budget = int(getattr(response, "token_budget_initial", 0) or 0)
         used_budget = int(getattr(response, "token_budget_used", 0) or 0)
         instance.set_token_budget_bump(initial_budget, used_budget)
