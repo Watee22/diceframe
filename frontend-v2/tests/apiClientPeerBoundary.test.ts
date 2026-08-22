@@ -42,7 +42,11 @@ describe('API client peer boundary', () => {
   })
 
   it('keeps binary HTTP requests available outside peer games', async () => {
-    const response = new Response(new Blob(['image']), { status: 200 })
+    // jsdom's Blob is not the same implementation used by Node's Response in CI.
+    const response = new Response('image', {
+      status: 200,
+      headers: { 'Content-Type': 'image/png' },
+    })
     const fetchMock = vi.fn().mockResolvedValue(response)
     vi.stubGlobal('fetch', fetchMock)
 
