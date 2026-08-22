@@ -37,7 +37,8 @@ export function useGame(){
   let reconnectTimer:number|undefined
   let connectVersion=0
   const signatures:Record<string,string> = { detail:'', players:'', log:'', privateMessages:'', map:'', loreEntries:'', lore:'' }
-  const isGm = computed(()=>!!detail.value && (!userId.value || (detail.value.gm_uid===userId.value && hasAccessToken())))
+  // GM 判定与后端 is_game_gm 同口径：已登录 owner（管理员账号多人共用都算）或该局主 GM 会话。
+  const isGm = computed(()=>!!detail.value && (hasAccessToken() || (!!userId.value && detail.value.gm_uid===userId.value)))
   const actorId = computed(() => userId.value || (isGm.value ? detail.value?.gm_uid || '' : ''))
   const player = computed(()=>players.value.find(p=>p.user_id===actorId.value) || players.value[0])
 

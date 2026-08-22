@@ -17,7 +17,7 @@ from src.webui.routes._common import (
     _get_api,
     _require_confirmed_request,
 )
-from src.webui.services._common import _GAME_KEY_SEP
+from src.webui.services._common import _GAME_KEY_SEP, is_game_gm
 
 logger = logging.getLogger("trpg")
 
@@ -153,14 +153,14 @@ async def api_multiplayer_status(request: web.Request) -> web.Response:
 
 
 def _health_allowed(request: web.Request, inst) -> bool:
-    return bool(request.get("user_id", "")) and request.get("user_id", "") == inst.gm_uid
+    return is_game_gm(inst, request.get("user_id", ""), bool(request.get("owner_authenticated", False)))
 
 
 def _system_log_allowed(request: web.Request, inst) -> bool:
     uid = request.get("user_id", "")
     if not uid:
         return False
-    if uid == inst.gm_uid:
+    if is_game_gm(inst, uid, bool(request.get("owner_authenticated", False))):
         return True
     return bool(getattr(inst, "solo_mode", False) and uid in getattr(inst, "players", {}))
 
@@ -318,7 +318,7 @@ def _gm_only_inst(request: web.Request, gk: str):
     inst = request.app["subsystems"].registry.get(api._parse_key(gk))
     if not inst:
         return None, web.json_response({"ok": False, "error": "not found"}, status=404)
-    if request.get("user_id", "") != inst.gm_uid:
+    if not is_game_gm(inst, request.get("user_id", ""), bool(request.get("owner_authenticated", False))):
         return None, web.json_response({"ok": False, "error": "GM only"}, status=403)
     return inst, None
 
@@ -346,7 +346,7 @@ async def api_private_log(request: web.Request) -> web.Response:
     if not inst:
         return web.json_response({"ok": False, "error": "not found"}, status=404)
     session_uid = request.get("user_id", "")
-    if session_uid and session_uid == inst.gm_uid:
+    if session_uid and is_game_gm(inst, session_uid, bool(request.get("owner_authenticated", False))):
         result = _get_api(request).private_log(gk)
     elif session_uid in inst.players:
         result = _get_api(request).private_log_for_user(gk, session_uid)
@@ -390,7 +390,7 @@ async def api_log(request: web.Request) -> web.Response:
     api = _get_api(request)
     game_key = request.match_info["game_key"]
     inst = request.app["subsystems"].registry.get(api._parse_key(game_key))
-    include_internal = bool(inst and request.get("user_id", "") == inst.gm_uid)
+    include_internal = is_game_gm(inst, request.get("user_id", ""), bool(request.get("owner_authenticated", False)))
     if include_internal:
         return web.json_response(api.get_log(game_key, page, per_page, True))
     return web.json_response(api.get_log(game_key, page, per_page))
@@ -614,7 +614,7 @@ async def api_char_update(request: web.Request) -> web.Response:
     if not inst:
         return web.json_response({"error": "游戏不存在"}, status=404)
     session_uid = request.get("user_id", "")
-    if not can_modify_character(session_uid, uid, inst.gm_uid):
+    if not can_modify_character(session_uid, uid, inst.gm_uid, owner=bool(request.get("owner_authenticated", False))):
         return web.json_response({"error": "无权修改他人角色卡"}, status=403)
     return web.json_response(await api.update_character(gk, uid, body))
 
@@ -630,7 +630,7 @@ async def api_char_delete(request: web.Request) -> web.Response:
     if not inst:
         return web.json_response({"error": "游戏不存在"}, status=404)
     session_uid = request.get("user_id", "")
-    if not can_modify_character(session_uid, uid, inst.gm_uid):
+    if not can_modify_character(session_uid, uid, inst.gm_uid, owner=bool(request.get("owner_authenticated", False))):
         return web.json_response({"error": "无权删除他人角色"}, status=403)
     return web.json_response(await api.delete_character(gk, uid))
 

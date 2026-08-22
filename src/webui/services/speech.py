@@ -121,11 +121,12 @@ async def synthesize(
     voice: str = "",
     language: str = "zh-CN",
     speed: float = 1.0,
+    owner: bool = False,
 ):
     inst = api._reg.get(api._parse_key(game_key))
     if inst is None:
         raise KeyError("游戏不存在")
-    if not user_id or (user_id != inst.gm_uid and user_id not in inst.players):
+    if not user_id or not (owner or user_id == inst.gm_uid or user_id in inst.players):
         raise PermissionError("当前身份不属于本局游戏")
     if not _is_public_game_text(inst, text):
         raise PermissionError("只能朗读本局公开时间线中的内容")

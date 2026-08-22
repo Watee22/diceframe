@@ -111,6 +111,7 @@ async def _synthesize(request: web.Request, game_key: str = "") -> web.Response:
                 voice,
                 language,
                 speed,
+                owner=bool(request.get("owner_authenticated", False)),
             )
         else:
             audio = await api.test_speech(text, voice, language, speed)

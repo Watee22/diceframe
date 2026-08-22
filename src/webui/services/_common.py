@@ -1,5 +1,7 @@
 """WebUI services 共享的常量与工具。"""
 
+from typing import Any
+
 _GAME_KEY_SEP = "|"
 _INVALID_GAME_KEY = ("__invalid_game_key__", "", "")
 
@@ -29,3 +31,16 @@ def _parse_game_key(game_key: str) -> tuple[str, str, str]:
 def _is_safe_world_id(s: str) -> bool:
     """校验 world_id 不含路径遍历字符（允许中文等正常字符）。"""
     return bool(s) and "/" not in s and "\\" not in s and ".." not in s
+
+
+def is_game_gm(inst: Any, user_id: str, owner_authenticated: bool = False) -> bool:
+    """GM 判定统一入口：该局主 GM，或已登录 owner（多人共用管理员账号都算 GM）。
+
+    所有 GM 门控必须走这里，避免散落的 ``== gm_uid`` 各自为政；
+    后续多 GM（co_gm_uids）也只需扩展这一个函数。
+    """
+    if inst is None or not user_id:
+        return False
+    if user_id == getattr(inst, "gm_uid", ""):
+        return True
+    return bool(owner_authenticated)

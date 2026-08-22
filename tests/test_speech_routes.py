@@ -17,7 +17,7 @@ class _FakeApi:
     def list_speech_voices(self):
         return {"ok": True, "provider": "browser", "voices": []}
 
-    async def synthesize_speech(self, game_key, user_id, text, voice, language, speed):
+    async def synthesize_speech(self, game_key, user_id, text, voice, language, speed, owner=False):
         self.calls.append((game_key, user_id, text, voice, language, speed))
         if self.error:
             raise self.error

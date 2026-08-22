@@ -21,9 +21,11 @@ from src.webui.services._common import _parse_game_key, _is_safe_world_id
 logger = logging.getLogger("trpg")
 
 
-def can_modify_character(session_uid: str, target_uid: str, gm_uid: str) -> bool:
-    """角色卡更新/删除权限：仅本人或该局 GM 可改，空身份拒绝。"""
-    return bool(session_uid) and (session_uid == target_uid or session_uid == gm_uid)
+def can_modify_character(session_uid: str, target_uid: str, gm_uid: str, owner: bool = False) -> bool:
+    """角色卡更新/删除权限：仅本人、该局 GM 或已登录 owner 可改，空身份拒绝。"""
+    if not session_uid:
+        return False
+    return session_uid == target_uid or session_uid == gm_uid or owner
 
 
 class WebAPI:
@@ -269,8 +271,9 @@ class WebAPI:
         voice: str = "",
         language: str = "zh-CN",
         speed: float = 1.0,
+        owner: bool = False,
     ):
-        return await speech.synthesize(self, game_key, user_id, text, voice, language, speed)
+        return await speech.synthesize(self, game_key, user_id, text, voice, language, speed, owner=owner)
 
     async def test_speech(
         self,
@@ -288,8 +291,9 @@ class WebAPI:
         audio: bytes,
         content_type: str,
         language: str = "",
+        owner: bool = False,
     ):
-        return await asr.transcribe(self, game_key, user_id, audio, content_type, language)
+        return await asr.transcribe(self, game_key, user_id, audio, content_type, language, owner=owner)
 
     async def test_transcription(self, audio: bytes, content_type: str, language: str = ""):
         return await asr.test_transcription(self, audio, content_type, language)

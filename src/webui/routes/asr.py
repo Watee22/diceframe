@@ -42,6 +42,7 @@ async def _transcribe(request: web.Request, game_key: str = "") -> web.Response:
                 audio,
                 content_type,
                 language,
+                owner=bool(request.get("owner_authenticated", False)),
             )
         else:
             result = await api.test_transcription(audio, content_type, language)

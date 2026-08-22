@@ -17,11 +17,12 @@ async def transcribe(
     audio: bytes,
     content_type: str,
     language: str = "",
+    owner: bool = False,
 ) -> dict[str, Any]:
     inst = api._reg.get(api._parse_key(game_key))
     if inst is None:
         raise KeyError("游戏不存在")
-    if not user_id or (user_id != inst.gm_uid and user_id not in inst.players):
+    if not user_id or not (owner or user_id == inst.gm_uid or user_id in inst.players):
         raise PermissionError("当前身份不属于本局游戏")
     result = await api._asr.transcribe(
         TranscriptionRequest(audio=audio, content_type=content_type, language=language),

@@ -13,7 +13,7 @@ class _FakeApi:
         self.error = error
         self.calls = []
 
-    async def transcribe_speech(self, game_key, user_id, audio, content_type, language):
+    async def transcribe_speech(self, game_key, user_id, audio, content_type, language, owner=False):
         self.calls.append((game_key, user_id, audio, content_type, language))
         if self.error:
             raise self.error
