@@ -12,7 +12,8 @@ test('two clients establish a direct data channel through Hub signaling', async 
   await host.getByLabel('STUN 服务').selectOption('none')
   await host.locator('.peer-direct-consent input').check()
   await host.getByRole('button', { name: '创建临时直连房间' }).click()
-  const invite = await host.locator('.peer-invite textarea').inputValue()
+  // 批量开房会同时生成已绑定角色与空闲席位的链接；该流程需要空闲席位来创建新角色。
+  const invite = await host.getByLabel('新玩家 1 的一次性链接码').getByRole('textbox').inputValue()
   expect(invite).toMatch(/^DFP2-/)
 
   await guest.goto('/#/peer')
