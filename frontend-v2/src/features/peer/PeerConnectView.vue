@@ -6,7 +6,7 @@ import { ArrowBackOutline, CopyOutline, LinkOutline } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
 import { createRendezvousRoom, getRendezvousConfig } from '@/api/peer'
 import { api, ApiError, errorMessage } from '@/api/client'
-import type { GamesResponse, GameSummary } from '@/api/types'
+import type { CharacterListResponse, GamesResponse, GameSummary, Player } from '@/api/types'
 import { useLocale } from '@/composables/useLocale'
 import { useConfirm } from '@/composables/useConfirm'
 import { useToast } from '@/composables/useToast'
@@ -19,6 +19,7 @@ import {
   encodePeerInvites,
   stunUrlsForPreset,
   type EncodedPeerInvite,
+  type PeerInviteTarget,
   type StunPresetId,
 } from './inviteCode'
 
@@ -58,12 +59,13 @@ const peerSession = usePeerSessionStore()
 const { connected, peerStates, roomCode, state, stateDetail } = storeToRefs(peerSession)
 const mode = ref<Mode>('host')
 const busy = ref(false)
-const peerCount = ref(2)
 const availableGames = ref<GameSummary[]>([])
 const hubMaxPeersPerRoom = ref(6)
 const hubRetryAfter = ref(15)
 const hubLoadLevel = ref<'normal' | 'busy' | 'nearly_full'>('normal')
 const selectedGameKey = ref('')
+const selectedPlayers = ref<Player[]>([])
+const playersLoading = ref(false)
 const hostStunPreset = ref<StunPresetId>(savedStunPreset())
 const hostCustomStunUrl = ref(savedCustomStunUrl())
 const guestStunChoice = ref<GuestStunChoice>('invite')
@@ -96,38 +98,69 @@ const invitePreview = computed(() => {
 const selectedGame = computed(() => (
   availableGames.value.find(game => game.game_key === selectedGameKey.value)
 ))
+const selectedHostUserId = computed(() => (
+  String(selectedGame.value?.gm_uid || '') || selectedPlayers.value[0]?.user_id || ''
+))
+const existingGuestPlayers = computed(() => {
+  return selectedPlayers.value.filter(player => player.user_id !== selectedHostUserId.value)
+})
 function gameSlots(game: GameSummary | undefined): number {
   if (!game) return 0
   return Math.max(0, Number(game.max_players || 6) - Number(game.player_count || 0))
 }
-const maxRoomPeerCount = computed(() => {
+const automaticInviteTargets = computed<PeerInviteTarget[]>(() => {
   const game = selectedGame.value
-  if (!game) return 2
-  const availableSlots = Math.max(0, Number(game.max_players || 6) - Number(game.player_count || 0))
-  return Math.max(2, Math.min(hubMaxPeersPerRoom.value, availableSlots + 1))
+  if (!game) return []
+  const targets: PeerInviteTarget[] = existingGuestPlayers.value.map(player => ({
+    actorId: player.user_id,
+    actorName: player.character_name || player.user_id,
+  }))
+  for (let index = 0; index < gameSlots(game); index += 1) {
+    targets.push({ actorName: t('peerNewPlayerNumber', { number: index + 1 }) })
+  }
+  return targets.slice(0, Math.max(0, hubMaxPeersPerRoom.value - 1))
 })
+const roomPeerCount = computed(() => automaticInviteTargets.value.length + 1)
+const batchOmittedCount = computed(() => Math.max(
+  0,
+  existingGuestPlayers.value.length
+    + gameSlots(selectedGame.value)
+    - automaticInviteTargets.value.length,
+))
+const hasInviteCapacity = computed(() => automaticInviteTargets.value.length > 0)
 const capacityHint = computed(() => {
   const game = selectedGame.value
   if (!game) return ''
   return t('peerCapacityHint', {
+    used: String(Number(game.player_count || 0)),
+    total: String(Number(game.max_players || 6)),
+    existing: String(existingGuestPlayers.value.length),
     slots: String(gameSlots(game)),
-    max: String(maxRoomPeerCount.value),
+    max: String(roomPeerCount.value),
   })
 })
 const hubLoadLabel = computed(() => t(`peerLoad_${hubLoadLevel.value}`))
 
 watch(hostStunPreset, value => saveLocalValue(STUN_PRESET_KEY, value))
 watch(hostCustomStunUrl, value => saveLocalValue(STUN_CUSTOM_KEY, value.trim()))
-// 上限收敛必须即时且可见：输入超限或上限变化（切换游戏、列表/Hub 配置加载完成）时
-// 立刻把人数收敛到上限并 toast 说明，避免「输入框显示 6，点创建后静默变 2」的困惑。
-function clampPeerCount(capacity: number) {
-  if (typeof peerCount.value === 'number' && peerCount.value > capacity) {
-    peerCount.value = capacity
-    toast.warning(t('peerCapacityTrimmed', { max: String(capacity) }))
+
+let playerLoadVersion = 0
+async function loadSelectedPlayers(gameKey: string) {
+  const version = ++playerLoadVersion
+  selectedPlayers.value = []
+  if (!gameKey) return
+  playersLoading.value = true
+  try {
+    const result = await api<CharacterListResponse>(`/games/${encodeURIComponent(gameKey)}/characters`)
+    if (version !== playerLoadVersion) return
+    selectedPlayers.value = result.players || []
+  } catch (error) {
+    if (version === playerLoadVersion) toast.error(errorMessage(error))
+  } finally {
+    if (version === playerLoadVersion) playersLoading.value = false
   }
 }
-watch(peerCount, () => clampPeerCount(maxRoomPeerCount.value))
-watch(maxRoomPeerCount, capacity => clampPeerCount(capacity))
+watch(selectedGameKey, gameKey => void loadSelectedPlayers(gameKey))
 
 onMounted(async () => {
   const [gamesResult, configResult] = await Promise.allSettled([
@@ -135,9 +168,8 @@ onMounted(async () => {
     getRendezvousConfig(),
   ])
   if (gamesResult.status === 'fulfilled') {
-    availableGames.value = (gamesResult.value.games || []).filter(game => (
-      Number(game.player_count || 0) < Number(game.max_players || 6)
-    ))
+    // 满员存档仍可把已存在的角色重新分享给玩家，不能从直连列表里隐藏。
+    availableGames.value = gamesResult.value.games || []
     selectedGameKey.value = availableGames.value[0]?.game_key || ''
   }
   if (configResult.status === 'fulfilled') {
@@ -170,13 +202,14 @@ function stunConfigError(error: unknown): string | null {
 }
 
 async function createRoom() {
-  if (!directConsent.value || sessionActive.value) return
+  if (!directConsent.value || sessionActive.value || playersLoading.value) return
   busy.value = true
   stateDetail.value = ''
   try {
     if (!selectedGameKey.value) throw new Error(t('peerGameRequired'))
     const game = selectedGame.value
     if (!game) throw new Error(t('peerGameRequired'))
+    if (!hasInviteCapacity.value) throw new Error(t('peerNoInviteCapacity'))
     if (game.solo_mode !== false) {
       const accepted = await confirm({
         title: t('peerConvertSoloTitle'),
@@ -195,18 +228,18 @@ async function createRoom() {
       game.solo_mode = false
     }
     const selectedStunUrls = stunUrlsForPreset(hostStunPreset.value, hostCustomStunUrl.value)
-    // 兜底收敛：正常路径下 watcher 已即时收敛，这里防 watcher 未触发的边界情况。
-    const requestedCount = peerCount.value
-    const capacity = maxRoomPeerCount.value
-    if (requestedCount > capacity) {
-      peerCount.value = capacity
-      toast.warning(t('peerCapacityTrimmed', { max: String(capacity) }))
-    }
-    const room = await createRendezvousRoom(peerCount.value)
+    const targets = automaticInviteTargets.value
+    const room = await createRendezvousRoom(targets.length + 1)
     inviteCodes.value = encodePeerInvites(
       room,
       selectedStunUrls,
       selectedGameKey.value,
+      targets,
+    )
+    const guestActorIds = Object.fromEntries(
+      room.invitations
+        .map((invitation, index) => [invitation.peer_id, targets[index]?.actorId || ''] as const)
+        .filter(([, actorId]) => Boolean(actorId)),
     )
     peerSession.startMulti({
       isHost: true,
@@ -218,6 +251,7 @@ async function createRoom() {
       websocketUrl: room.websocket_url,
       stunUrls: selectedStunUrls,
       gameKey: selectedGameKey.value,
+      guestActorIds,
       localApi: api,
     })
   } catch (error) {
@@ -251,6 +285,7 @@ function joinRoom() {
       websocketUrl: invite.websocketUrl,
       stunUrls: selectedStunUrls,
       gameKey: invite.gameKey,
+      assignedActorId: invite.actorId,
     })
   } catch (error) {
     const stunError = stunConfigError(error)
@@ -274,17 +309,33 @@ async function copyInvite(inviteCode: string) {
 /** 多码房间一键复制全部，方便房主整段发给玩家。 */
 async function copyAllInvites() {
   const all = inviteCodes.value
-    .map((invite, index) => `${index + 1}. ${invite.inviteCode}`)
+    .map((invite, index) => `${invite.actorName || t('peerNewPlayerNumber', { number: index + 1 })}：${invite.inviteCode}`)
     .join('\n\n')
   await copyToClipboard(all)
   toast.success(t('peerAllInvitesCopied'))
 }
 
-function enterGame() {
+async function enterGame() {
   if (!peerSession.gameKey) return
   if (peerSession.isHost) {
     router.push({ name: 'play', query: { game: peerSession.gameKey } })
   } else {
+    if (peerSession.actorId) {
+      const rebound = await peerSession.rebindIdentity()
+      if (rebound && peerSession.actorId) {
+        router.push({
+          name: 'play',
+          query: {
+            game: peerSession.gameKey,
+            user: peerSession.actorId,
+            share: '1',
+            peer: '1',
+          },
+        })
+        return
+      }
+      toast.error(t('peerAssignedIdentityFailed'))
+    }
     router.push({
       name: 'join',
       query: { game: peerSession.gameKey, share: '1', peer: '1' },
@@ -326,13 +377,25 @@ function enterGame() {
           </select>
           <small>{{ t(`peerStunPresetHint_${hostStunPreset}`) }}</small>
         </label>
-        <label v-if="mode === 'host'" class="peer-field">
-          <span>{{ t('peerPlayerCount') }}</span>
-          <input v-model.number="peerCount" type="number" min="2" :max="maxRoomPeerCount" :disabled="state !== 'idle' && state !== 'closed' && state !== 'error'">
-          <small v-if="capacityHint">{{ capacityHint }}</small>
-          <small>{{ t('peerPlayerCountHint') }}</small>
+        <section v-if="mode === 'host' && selectedGame && !playersLoading && hasInviteCapacity" class="peer-room-batch">
+          <header>
+            <strong>{{ t('peerRoomBatchTitle', { count: automaticInviteTargets.length }) }}</strong>
+            <small v-if="capacityHint">{{ capacityHint }}</small>
+          </header>
+          <ul>
+            <li v-for="(target, index) in automaticInviteTargets" :key="target.actorId || `new-${index}`">
+              <span>{{ index + 1 }}</span>
+              <strong>{{ target.actorName }}</strong>
+              <small>{{ target.actorId ? t('peerExistingPlayer') : t('peerNewPlayerSeat') }}</small>
+            </li>
+          </ul>
+          <small>{{ t('peerRoomBatchHint') }}</small>
+          <small v-if="batchOmittedCount" class="peer-batch-warning">{{ t('peerRoomBatchCapped', { count: batchOmittedCount }) }}</small>
           <small class="peer-load-level" :class="`peer-load-${hubLoadLevel}`">{{ t('peerHubLoad') }}：{{ hubLoadLabel }}</small>
-        </label>
+        </section>
+        <p v-else-if="mode === 'host' && selectedGame && !playersLoading" class="peer-no-capacity">
+          {{ t('peerNoInviteCapacity') }}
+        </p>
         <label v-if="mode === 'host' && hostStunPreset === 'custom'" class="peer-field">
           <span>{{ t('peerStunCustomAddress') }}</span>
           <textarea v-model.trim="hostCustomStunUrl" rows="3" :placeholder="t('peerStunCustomPlaceholder')" :disabled="state !== 'idle' && state !== 'closed' && state !== 'error'" />
@@ -344,7 +407,7 @@ function enterGame() {
             <input v-model="directConsent" type="checkbox">
             <span>{{ t('peerDirectConsent') }} <RouterLink :to="{ name: 'legal-privacy' }" target="_blank" rel="noopener">{{ t('legalPrivacyTitle') }}</RouterLink></span>
           </label>
-          <button class="success peer-primary" :disabled="!directConsent || !selectedGameKey || busy || sessionActive" @click="createRoom">
+          <button class="success peer-primary" :disabled="!directConsent || !selectedGameKey || playersLoading || !hasInviteCapacity || busy || sessionActive" @click="createRoom">
             <NIcon :component="LinkOutline" />{{ t('peerCreateRoom') }}
           </button>
           <div v-if="inviteCodes.length" class="peer-invite">
@@ -362,14 +425,17 @@ function enterGame() {
               class="peer-invite-item"
             >
               <span class="peer-invite-index" aria-hidden="true">{{ index + 1 }}</span>
-              <NInput
-                class="peer-invite-code"
-                :value="invite.inviteCode"
-                type="textarea"
-                readonly
-                :autosize="{ minRows: 2, maxRows: 2 }"
-                :aria-label="t('peerInviteNumber', { number: index + 1 })"
-              />
+              <div class="peer-invite-code-wrap">
+                <strong>{{ invite.actorName || t('peerNewPlayerNumber', { number: index + 1 }) }}</strong>
+                <NInput
+                  class="peer-invite-code"
+                  :value="invite.inviteCode"
+                  type="textarea"
+                  readonly
+                  :autosize="{ minRows: 2, maxRows: 2 }"
+                  :aria-label="t('peerInviteForTarget', { name: invite.actorName || t('peerNewPlayerNumber', { number: index + 1 }) })"
+                />
+              </div>
               <button
                 class="peer-invite-copy"
                 :aria-label="t('peerCopyInvite')"
@@ -388,6 +454,7 @@ function enterGame() {
             <textarea v-model.trim="inviteInput" rows="4" :placeholder="t('peerInvitePlaceholder')" />
           </label>
           <div v-if="invitePreview" class="peer-invite-preview">
+            <span v-if="invitePreview.actorName">{{ t('peerInviteAssignedTo') }} <strong>{{ invitePreview.actorName }}</strong></span>
             <span>{{ t('peerInviteStun') }}</span>
             <div class="peer-invite-stun-list">
               <code v-for="url in invitePreview.stunUrls" :key="url">{{ url }}</code>

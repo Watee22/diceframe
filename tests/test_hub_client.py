@@ -9,6 +9,7 @@ from aiohttp.test_utils import make_mocked_request
 
 from src.hub_client import (
     HubClient,
+    HubConnectionUnavailable,
     HubHTTPError,
     HubUnavailable,
     _PLUGIN_DETAIL_TIMEOUT,
@@ -201,6 +202,52 @@ async def test_rendezvous_room_creation_uses_pseudonymous_installation_identity(
 
 
 @pytest.mark.asyncio
+async def test_rendezvous_retries_once_when_connection_was_never_established(tmp_path, monkeypatch):
+    client = HubClient(tmp_path, base_url="http://127.0.0.1:9")
+    calls = 0
+
+    async def flaky_request(peer_count):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise HubConnectionUnavailable(retry_safe=True)
+        return {
+            "protocol_version": 2,
+            "topology": "host-star",
+            "room_code": "ABCDEFGH",
+            "host_peer_id": "h_abcdefghijk",
+            "host_token": "host-secret",
+            "invitations": [{"peer_id": "p_abcdefghijk", "token": "guest-secret"}],
+            "expires_at": "2026-08-20T12:05:00+00:00",
+            "websocket_url": "ws://127.0.0.1:18080/v1/rendezvous/rooms/ABCDEFGH/ws",
+        }
+
+    monkeypatch.setattr(client, "_create_rendezvous_room_request", flaky_request)
+
+    room = await client.create_rendezvous_room(2)
+
+    assert room["room_code"] == "ABCDEFGH"
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_rendezvous_does_not_retry_after_request_may_have_been_sent(tmp_path, monkeypatch):
+    client = HubClient(tmp_path, base_url="http://127.0.0.1:9")
+    calls = 0
+
+    async def failed_request(_peer_count):
+        nonlocal calls
+        calls += 1
+        raise HubConnectionUnavailable(retry_safe=False)
+
+    monkeypatch.setattr(client, "_create_rendezvous_room_request", failed_request)
+
+    with pytest.raises(HubConnectionUnavailable, match="暂时无法连接"):
+        await client.create_rendezvous_room(2)
+    assert calls == 1
+
+
+@pytest.mark.asyncio
 async def test_rendezvous_401_rotates_identity_only_after_successful_reregister(tmp_path):
     """瞬时 401 不销毁本地身份：只有重注册成功才落盘新身份。"""
     calls = {"rooms": 0, "installations": 0}
@@ -344,6 +391,17 @@ async def test_local_rendezvous_route_validates_count_and_confirmation():
     response = await api_hub_rendezvous_room_create(allowed)
     assert response.status == 201
     assert json.loads(response.text)["peer_count"] == 6
+
+    class OfflineApi:
+        async def create_rendezvous_room(self, _peer_count):
+            raise HubConnectionUnavailable(retry_safe=False)
+
+    app["api"] = OfflineApi()
+    response = await api_hub_rendezvous_room_create(JsonRequest({"peer_count": 2}))
+    assert response.status == 502
+    payload = json.loads(response.text)
+    assert payload["error_code"] == "hub_connection_unavailable"
+    assert payload["error"] == "暂时无法连接 DiceFrame Hub，请检查网络后重试"
 
 
 @pytest.mark.asyncio

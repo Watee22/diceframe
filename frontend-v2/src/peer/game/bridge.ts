@@ -65,6 +65,7 @@ function sanitizePayload(
 
 export class PeerHostGameBridge {
   private readonly actorByPeer = new Map<string, string>()
+  private readonly assignedActorByPeer: Map<string, string>
   private readonly requestTimes = new Map<string, number[]>()
   private readonly inFlight = new Map<string, number>()
   private readonly waiters = new Map<string, Array<() => void>>()
@@ -73,8 +74,17 @@ export class PeerHostGameBridge {
     readonly gameKey: string,
     private readonly executor: PeerLocalApiExecutor,
     private readonly onMutation: () => void,
+    assignedActorByPeer: Readonly<Record<string, string>> = {},
+    boundActorByPeer: Readonly<Record<string, string>> = {},
+    private readonly onActorBinding: (peerId: string, actorId: string) => void = () => undefined,
   ) {
     if (!gameKey || gameKey.length > 512) throw new Error('invalid_game_key')
+    this.assignedActorByPeer = new Map(
+      Object.entries(assignedActorByPeer).filter(([, actorId]) => Boolean(actorId)),
+    )
+    for (const [peerId, actorId] of Object.entries(boundActorByPeer)) {
+      if (actorId) this.actorByPeer.set(peerId, actorId)
+    }
   }
 
   async handle(
@@ -134,6 +144,7 @@ export class PeerHostGameBridge {
     if (!current.game_key) throw new Error('game_not_found')
     if (current.player_access_open === false) throw new Error('player_access_closed')
     if (operation === 'player.create') {
+      if (this.assignedActorByPeer.has(peerId)) throw new Error('player_invite_has_identity')
       const existingActor = this.actorByPeer.get(peerId)
       if (existingActor) return { ok: true, user_id: existingActor, reused: true }
       const playerCount = Number(current.player_count || 0)
@@ -146,24 +157,29 @@ export class PeerHostGameBridge {
       })
       const actorId = typeof result.user_id === 'string' ? result.user_id : ''
       if (!actorId) throw new Error(String(result.error || 'player_creation_failed'))
-      this.actorByPeer.set(peerId, actorId)
+      this.bindActor(peerId, actorId)
       return result
     }
     if (operation === 'player.rebind') {
-      // guest 刷新/重连后凭原 user_id 恢复身份，避免重建角色占座。
+      // 邀请中指定的已有角色，或该 peer 此前创建并已持久化的角色，才允许恢复。
+      // 不能让持有普通“新玩家”邀请码的客户端枚举并冒充任意已有角色。
       const claimedActor = requiredIdentifier(payload.user_id, 'user_id')
+      const allowedActor = this.actorByPeer.get(peerId) || this.assignedActorByPeer.get(peerId) || ''
+      if (!allowedActor || claimedActor !== allowedActor) {
+        throw new Error('player_identity_not_assigned')
+      }
       const claimedBy = [...this.actorByPeer.entries()]
         .find(([, actor]) => actor === claimedActor)
       if (claimedBy && claimedBy[0] !== peerId) throw new Error('player_identity_taken')
-      const detail = await this.execute(
-        `/games/${game}?share=1&user=${encodeURIComponent(claimedActor)}`,
+      const characters = await this.execute(
+        `/games/${game}/characters?share=1&user=${encodeURIComponent(claimedActor)}`,
       )
-      const players = Array.isArray(detail.players) ? detail.players : []
+      const players = Array.isArray(characters.players) ? characters.players : []
       const exists = players.some(player => (
         player && typeof player === 'object' && player.user_id === claimedActor
       ))
       if (!exists) throw new Error('player_identity_unknown')
-      this.actorByPeer.set(peerId, claimedActor)
+      this.bindActor(peerId, claimedActor)
       return { ok: true, user_id: claimedActor, rebound: true }
     }
 
@@ -230,6 +246,11 @@ export class PeerHostGameBridge {
     }
     return value as Record<string, unknown>
   }
+
+  private bindActor(peerId: string, actorId: string): void {
+    this.actorByPeer.set(peerId, actorId)
+    this.onActorBinding(peerId, actorId)
+  }
 }
 
 export class PeerRemoteGameClient {
@@ -240,9 +261,10 @@ export class PeerRemoteGameClient {
     private readonly session: MultiPeerConnectionSession,
     private readonly hostPeerId: string,
     readonly gameKey: string,
+    assignedActorId = '',
   ) {
-    // 刷新恢复：优先用上次会话的角色身份，避免重建角色占座。
-    this.actorId = readStoredPeerActor(gameKey)
+    // 指定角色的邀请码优先于本机旧缓存；普通邀请码刷新时恢复此前创建的角色。
+    this.actorId = assignedActorId || readStoredPeerActor(gameKey)
   }
 
   get userId(): string {

@@ -20,6 +20,12 @@ interface MultiStartOptions {
   stunUrls: readonly string[]
   gameKey: string
   localApi?: PeerLocalApiExecutor
+  /** host: 每个 guest peer 被明确分配的已有角色。 */
+  guestActorIds?: Record<string, string>
+  /** host: 会话期间已经完成的 peer -> 角色绑定，用于刷新恢复。 */
+  boundActorIds?: Record<string, string>
+  /** guest: 这枚邀请码指定的已有角色。 */
+  assignedActorId?: string
 }
 
 /** localStorage 里可恢复的会话参数（刷新后自动重连用）。 */
@@ -33,6 +39,9 @@ interface PersistedPeerSession {
   websocketUrl: string
   stunUrls: string[]
   gameKey: string
+  guestActorIds?: Record<string, string>
+  boundActorIds?: Record<string, string>
+  assignedActorId?: string
   savedAt: number
 }
 
@@ -65,6 +74,9 @@ function writePersisted(options: MultiStartOptions): void {
     websocketUrl: options.websocketUrl,
     stunUrls: [...options.stunUrls],
     gameKey: options.gameKey,
+    guestActorIds: { ...(options.guestActorIds || {}) },
+    boundActorIds: { ...(options.boundActorIds || {}) },
+    assignedActorId: options.assignedActorId || '',
     savedAt: Date.now(),
   }
   try {
@@ -89,6 +101,7 @@ export const usePeerSessionStore = defineStore('peer-session', () => {
   const peerStates = ref<Record<string, PeerConnectionState>>({})
   const gameKey = ref('')
   const isHost = ref(false)
+  const actorId = ref('')
   let session: MultiPeerConnectionSession | null = null
   let remoteGameClient: PeerRemoteGameClient | null = null
 
@@ -108,6 +121,7 @@ export const usePeerSessionStore = defineStore('peer-session', () => {
     peerStates.value = {}
     gameKey.value = ''
     isHost.value = false
+    actorId.value = ''
   }
 
   function reset(): void {
@@ -121,6 +135,11 @@ export const usePeerSessionStore = defineStore('peer-session', () => {
   function startMulti(options: MultiStartOptions, localApi?: PeerLocalApiExecutor): void {
     stop()
     const executor = localApi ?? options.localApi
+    const persistedOptions: MultiStartOptions = {
+      ...options,
+      guestActorIds: { ...(options.guestActorIds || {}) },
+      boundActorIds: { ...(options.boundActorIds || {}) },
+    }
     roomCode.value = options.roomCode
     gameKey.value = options.gameKey
     isHost.value = options.isHost
@@ -134,6 +153,15 @@ export const usePeerSessionStore = defineStore('peer-session', () => {
           requiredLocalApi(executor),
           () => {
             session?.notifyGameChanged()
+          },
+          persistedOptions.guestActorIds,
+          persistedOptions.boundActorIds,
+          (peerId, nextActorId) => {
+            persistedOptions.boundActorIds = {
+              ...(persistedOptions.boundActorIds || {}),
+              [peerId]: nextActorId,
+            }
+            writePersisted(persistedOptions)
           },
         )
       : null
@@ -156,10 +184,12 @@ export const usePeerSessionStore = defineStore('peer-session', () => {
         next,
         options.hostPeerId,
         options.gameKey,
+        options.assignedActorId,
       ))
+      actorId.value = remoteGameClient.userId
       setActivePeerGameClient(remoteGameClient)
     }
-    writePersisted(options)
+    writePersisted(persistedOptions)
     next.connect()
   }
 
@@ -177,6 +207,9 @@ export const usePeerSessionStore = defineStore('peer-session', () => {
       websocketUrl: saved.websocketUrl,
       stunUrls: saved.stunUrls,
       gameKey: saved.gameKey,
+      guestActorIds: saved.guestActorIds,
+      boundActorIds: saved.boundActorIds,
+      assignedActorId: saved.assignedActorId,
       localApi,
     }, localApi)
     return true
@@ -184,7 +217,10 @@ export const usePeerSessionStore = defineStore('peer-session', () => {
 
   /** guest 重连后向 host 恢复原角色身份。 */
   async function rebindIdentity(): Promise<boolean> {
-    return remoteGameClient ? remoteGameClient.rebindIdentity() : false
+    if (!remoteGameClient) return false
+    const rebound = await remoteGameClient.rebindIdentity()
+    actorId.value = rebound ? remoteGameClient.userId : ''
+    return rebound
   }
 
   function hasPersistedSession(): boolean {
@@ -198,6 +234,7 @@ export const usePeerSessionStore = defineStore('peer-session', () => {
     peerStates,
     gameKey,
     isHost,
+    actorId,
     connected,
     updateState,
     startMulti,

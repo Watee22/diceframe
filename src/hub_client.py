@@ -38,10 +38,19 @@ _READ_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_read=20)
 _INTERACTION_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_read=20)
 # 商店目录需要快速降级；用户主动打开的详情面板则允许慢链路有完整的加载时间。
 _PLUGIN_DETAIL_TIMEOUT = aiohttp.ClientTimeout(total=60, connect=5, sock_read=55)
+_RENDEZVOUS_CONNECT_RETRY_DELAY = 0.2
 
 
 class HubUnavailable(RuntimeError):
     """Hub 暂时不可用；调用方应使用本地缓存或原有镜像降级。"""
+
+
+class HubConnectionUnavailable(HubUnavailable):
+    """连接 Hub 失败；retry_safe 仅在请求尚未发送时为真。"""
+
+    def __init__(self, *, retry_safe: bool = False) -> None:
+        super().__init__("暂时无法连接 DiceFrame Hub，请检查网络后重试")
+        self.retry_safe = bool(retry_safe)
 
 
 class HubHTTPError(HubUnavailable):
@@ -196,30 +205,17 @@ class HubClient:
         """Create a governed host-star room with the local pseudonymous identity."""
         if isinstance(peer_count, bool) or not isinstance(peer_count, int) or not 2 <= peer_count <= 32:
             raise ValueError("peer_count 必须是 2 到 32 的整数")
-        try:
-            payload = await self._request(
-                "POST",
-                "/v1/rendezvous/rooms",
-                auth=True,
-                json_body={"peer_count": peer_count},
-            )
-        except HubHTTPError as exc:
-            if exc.status != 401:
-                raise
-            # A locally cached identity may have been deleted by retention or a
-            # previous clear-identity request. Re-register without deleting the
-            # stored identity first: the old file is only overwritten after the
-            # new registration succeeds, so a transient 401 (proxy hiccup, brief
-            # Hub trouble) never destroys the installed identity and its
-            # like/rating associations. A deliberate Hub revocation uses 403
-            # and must never be bypassed this way.
-            payload = await self._request(
-                "POST",
-                "/v1/rendezvous/rooms",
-                auth=True,
-                json_body={"peer_count": peer_count},
-                force_reregister=True,
-            )
+        payload: dict[str, Any] = {}
+        for attempt in range(2):
+            try:
+                payload = await self._create_rendezvous_room_request(peer_count)
+                break
+            except HubConnectionUnavailable as exc:
+                # ClientConnectorError 表示 TCP/TLS 连接尚未建立，请求没有发送；
+                # 这种失败重试 POST 不会重复建房。已发送后断线/超时则不自动重试。
+                if attempt or not exc.retry_safe:
+                    raise
+                await asyncio.sleep(_RENDEZVOUS_CONNECT_RETRY_DELAY)
         invitations = payload.get("invitations")
         required_strings = (
             "room_code",
@@ -254,6 +250,32 @@ class HubClient:
         if protocol_version != 2:
             raise HubUnavailable("Hub 已升级到更新的联机协议，请更新 DiceFrame 客户端")
         return payload
+
+    async def _create_rendezvous_room_request(self, peer_count: int) -> dict[str, Any]:
+        try:
+            return await self._request(
+                "POST",
+                "/v1/rendezvous/rooms",
+                auth=True,
+                json_body={"peer_count": peer_count},
+            )
+        except HubHTTPError as exc:
+            if exc.status != 401:
+                raise
+            # A locally cached identity may have been deleted by retention or a
+            # previous clear-identity request. Re-register without deleting the
+            # stored identity first: the old file is only overwritten after the
+            # new registration succeeds, so a transient 401 (proxy hiccup, brief
+            # Hub trouble) never destroys the installed identity and its
+            # like/rating associations. A deliberate Hub revocation uses 403
+            # and must never be bypassed this way.
+            return await self._request(
+                "POST",
+                "/v1/rendezvous/rooms",
+                auth=True,
+                json_body={"peer_count": peer_count},
+                force_reregister=True,
+            )
 
     async def rendezvous_config(self) -> dict[str, Any]:
         """Read the anonymous Hub-side availability and entry visibility controls."""
@@ -523,8 +545,14 @@ class HubClient:
             raise
         except asyncio.TimeoutError as exc:
             self._record_failure()
-            raise HubUnavailable("DiceFrame Hub 响应超时，请稍后重试") from exc
-        except (aiohttp.ClientError, HubUnavailable, ValueError):
+            raise HubConnectionUnavailable(retry_safe=False) from exc
+        except aiohttp.ClientConnectorError as exc:
+            self._record_failure()
+            raise HubConnectionUnavailable(retry_safe=True) from exc
+        except aiohttp.ClientError as exc:
+            self._record_failure()
+            raise HubConnectionUnavailable(retry_safe=False) from exc
+        except (HubUnavailable, ValueError):
             self._record_failure()
             raise
         self._failures = 0

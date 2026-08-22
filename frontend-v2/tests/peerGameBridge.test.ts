@@ -154,6 +154,34 @@ describe('peer remote game client', () => {
     }
   })
 
+  it('prefers the actor assigned by the invite over an unrelated local cache', async () => {
+    localStorage.setItem('diceframe_peer_actor_web|game|host', 'player_old')
+    try {
+      const requestGame = vi.fn(async () => ({
+        ok: true,
+        user_id: 'player_assigned',
+        rebound: true,
+      }))
+      const session = { requestGame } as unknown as MultiPeerConnectionSession
+      const client = new PeerRemoteGameClient(
+        session,
+        'h_abcdefghijk',
+        'web|game|host',
+        'player_assigned',
+      )
+
+      expect(client.userId).toBe('player_assigned')
+      await expect(client.rebindIdentity()).resolves.toBe(true)
+      expect(requestGame).toHaveBeenCalledWith(
+        'h_abcdefghijk',
+        'player.rebind',
+        { user_id: 'player_assigned' },
+      )
+    } finally {
+      localStorage.removeItem('diceframe_peer_actor_web|game|host')
+    }
+  })
+
   it('reports rebind failure without throwing when the identity is gone', async () => {
     localStorage.setItem('diceframe_peer_actor_web|game|host', 'player_dead')
     try {
@@ -183,11 +211,16 @@ describe('peer host bridge player.rebind', () => {
       }
       return { ok: true }
     }
-    const bridge = new PeerHostGameBridge('web|game|host', executor, () => undefined)
+    const bridge = new PeerHostGameBridge(
+      'web|game|host',
+      executor,
+      () => undefined,
+      { p_abcdefghijk: 'player_789' },
+    )
 
-    // 未知身份：拒绝
+    // 邀请未指定的身份：拒绝，不能拿普通邀请码枚举并冒充角色。
     await expect(bridge.handle('p_abcdefghijk', 'player.rebind', { user_id: 'player_ghost' }))
-      .rejects.toThrow('player_identity_unknown')
+      .rejects.toThrow('player_identity_not_assigned')
 
     // 已知身份：恢复映射，后续操作直接以该身份执行
     const result = await bridge.handle('p_abcdefghijk', 'player.rebind', { user_id: 'player_789' })
@@ -205,7 +238,15 @@ describe('peer host bridge player.rebind', () => {
       player_access_open: true,
       players,
     })
-    const bridge = new PeerHostGameBridge('web|game|host', executor, () => undefined)
+    const bridge = new PeerHostGameBridge(
+      'web|game|host',
+      executor,
+      () => undefined,
+      {
+        p_abcdefghijk: 'player_789',
+        p_cdefghijklm: 'player_789',
+      },
+    )
 
     await bridge.handle('p_abcdefghijk', 'player.rebind', { user_id: 'player_789' })
     await expect(bridge.handle('p_cdefghijklm', 'player.rebind', { user_id: 'player_789' }))
@@ -214,5 +255,17 @@ describe('peer host bridge player.rebind', () => {
     // 同一 peer 重复 rebind 幂等
     const again = await bridge.handle('p_abcdefghijk', 'player.rebind', { user_id: 'player_789' })
     expect(again.rebound).toBe(true)
+  })
+
+  it('does not let an unassigned new-player invite claim an occupied character', async () => {
+    const executor: PeerLocalApiExecutor = async () => ({
+      game_key: 'web|game|host',
+      player_access_open: true,
+      players: [{ user_id: 'player_789', character_name: '调查员' }],
+    })
+    const bridge = new PeerHostGameBridge('web|game|host', executor, () => undefined)
+
+    await expect(bridge.handle('p_abcdefghijk', 'player.rebind', { user_id: 'player_789' }))
+      .rejects.toThrow('player_identity_not_assigned')
   })
 })

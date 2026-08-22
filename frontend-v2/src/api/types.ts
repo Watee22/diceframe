@@ -341,6 +341,7 @@ export interface GameSummary {
   state?: string
   language?: string
   solo_mode?: boolean
+  gm_uid?: string
   round_number?: number
   player_count?: number
   max_players?: number

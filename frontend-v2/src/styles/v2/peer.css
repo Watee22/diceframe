@@ -80,6 +80,25 @@
 .peer-field small,
 .peer-invite > small { color: var(--df-text-muted); line-height: 1.5; }
 .peer-field textarea { resize: vertical; overflow-wrap: anywhere; font-family: var(--df-font-mono); font-size: 12px; }
+.peer-room-batch {
+  display: grid;
+  gap: 10px;
+  margin: -2px 0 16px;
+  padding: 12px;
+  border: 1px solid var(--df-border-soft);
+  border-radius: var(--df-radius-sm);
+  background: var(--df-surface-2);
+}
+.peer-room-batch > header { display: grid; gap: 4px; }
+.peer-room-batch > header > small,
+.peer-room-batch > small { color: var(--df-text-muted); font-size: 12px; line-height: 1.5; }
+.peer-no-capacity { margin: 0 0 16px; color: var(--df-text-muted); font-size: 13px; line-height: 1.55; }
+.peer-room-batch ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.peer-room-batch li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.peer-room-batch li > span { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; color: var(--df-accent-strong); background: var(--df-accent-soft); font-size: 11px; font-weight: 800; }
+.peer-room-batch li > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.peer-room-batch li > small { color: var(--df-text-muted); font-size: 11px; }
+.peer-room-batch .peer-batch-warning { color: var(--df-warning, #c9913a); }
 .peer-invite-preview { display: grid; gap: 6px; margin: -2px 0 16px; padding: 10px 12px; border: 1px solid var(--df-border-soft); border-radius: var(--df-radius-sm); background: var(--df-surface-2); }
 .peer-invite-preview span { color: var(--df-text-muted); font-size: 12px; }
 .peer-invite-stun-list { display: grid; gap: 4px; }
@@ -96,6 +115,8 @@
 .peer-invite-room { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
 .peer-invite-room code { color: var(--df-accent-strong); font-size: 16px; letter-spacing: .1em; }
 .peer-invite-item { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.peer-invite-code-wrap { display: grid; min-width: 0; gap: 4px; }
+.peer-invite-code-wrap > strong { overflow: hidden; color: var(--df-text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .peer-invite-index {
   display: grid;
   width: 26px;
@@ -174,6 +195,8 @@
   /* 窄屏下复制按钮收成图标+短文案，避免挤压码区 */
   .peer-invite-item { grid-template-columns: 22px minmax(0, 1fr) auto; gap: 6px; }
   .peer-invite-index { width: 22px; height: 22px; }
+  .peer-room-batch li { grid-template-columns: 22px minmax(0, 1fr); }
+  .peer-room-batch li > small { grid-column: 2; }
 }
 
 /* 启动弹窗：宽度适中、超高可滚、矮内容自然收缩不再底部留白 */

@@ -205,3 +205,94 @@ test('solo save asks before conversion and only then creates an online room', as
   await expect.poll(() => roomRequests).toBe(1)
   await expect(page.locator('.peer-invite textarea')).toHaveValue(/^DFP2-/)
 })
+
+test('a full save can issue a direct-connect code for an occupied character', async ({ page, request }) => {
+  let requestedPeerCount = 0
+  await page.route('**/api/**', async route => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/api/games') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          games: [{
+            game_key: 'web|full-room|web_bot',
+            world_name: '满员存档',
+            solo_mode: false,
+            gm_uid: 'gm_owner',
+            player_count: 2,
+            max_players: 2,
+          }],
+        }),
+      })
+      return
+    }
+    if (url.pathname.endsWith('/characters')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          players: [
+            { user_id: 'gm_owner', character_name: '房主' },
+            { user_id: 'player_nightingale', character_name: '夜莺' },
+          ],
+        }),
+      })
+      return
+    }
+    if (url.pathname === '/api/hub/rendezvous/config') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          enabled: true,
+          entry_visible: true,
+          load_level: 'normal',
+          max_peers_per_room: 6,
+          retry_after: 15,
+          message: '',
+        }),
+      })
+      return
+    }
+    if (url.pathname === '/api/hub/rendezvous/rooms') {
+      requestedPeerCount = Number(route.request().postDataJSON().peer_count)
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          protocol_version: 2,
+          topology: 'host-star',
+          room_code: 'FULLROOM',
+          host_peer_id: 'h_abcdefghijk',
+          host_token: 'host-token',
+          invitations: [{
+            peer_id: 'p_abcdefghijk',
+            token: 'guest-token-with-at-least-thirty-two-characters',
+          }],
+          expires_at: '2026-08-22T23:59:00+08:00',
+          websocket_url: 'ws://127.0.0.1:9/v1/rendezvous/rooms/FULLROOM/ws',
+        }),
+      })
+      return
+    }
+    await route.continue()
+  })
+
+  await prepareAuthenticatedPage(page, request)
+  await page.goto('/#/peer')
+  await expect(page.getByLabel('要开放的多人冒险')).toContainText('满员存档')
+  await expect(page.getByText('夜莺', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(/存档席位 2\/2：可重新邀请 1 个已有角色/)).toBeVisible()
+  await expect(page.locator('.peer-room-batch')).toContainText('开房后一次生成 1 枚 P2P 链接码')
+  await expect(page.locator('.peer-room-batch')).toContainText('夜莺')
+  await page.getByLabel('STUN 服务').selectOption('none')
+  await page.locator('.peer-direct-consent input').check()
+  await page.getByRole('button', { name: '创建临时直连房间' }).click()
+
+  await expect.poll(() => requestedPeerCount).toBe(2)
+  await expect(page.locator('.peer-invite-code-wrap > strong')).toHaveText('夜莺')
+  await expect(page.locator('.peer-invite textarea')).toHaveValue(/^DFP2-/)
+})

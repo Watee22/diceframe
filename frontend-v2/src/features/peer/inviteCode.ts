@@ -48,11 +48,21 @@ export interface PeerInvite {
   stunUrl: string
   stunUrls: string[]
   expiresAt: string
+  /** 房主为这枚一次性邀请指定的已有玩家身份；留空表示创建新玩家。 */
+  actorId?: string
+  actorName?: string
 }
 
 export interface EncodedPeerInvite {
   peerId: string
   inviteCode: string
+  actorId?: string
+  actorName?: string
+}
+
+export interface PeerInviteTarget {
+  actorId?: string
+  actorName?: string
 }
 
 function encodeBase64Url(value: string): string {
@@ -114,13 +124,21 @@ export function encodePeerInvites(
   room: RendezvousRoomResponse,
   stunUrls: string | readonly string[],
   gameKey: string,
+  targets: readonly PeerInviteTarget[] = [],
 ): EncodedPeerInvite[] {
   const normalizedGameKey = gameKey.trim()
   if (!normalizedGameKey || normalizedGameKey.length > 512) throw new Error('invalid_game_key')
   const normalizedStunUrls = normalizeStunUrls(stunUrls)
-  return room.invitations.map(invitation => ({
-    peerId: invitation.peer_id,
-    inviteCode: `DFP2-${encodeBase64Url(JSON.stringify({
+  return room.invitations.map((invitation, index) => {
+    const target = targets[index] || {}
+    const actorId = String(target.actorId || '').trim()
+    const actorName = String(target.actorName || '').trim()
+    if (actorId.length > 128 || actorName.length > 200) throw new Error('invalid_invite_target')
+    return {
+      peerId: invitation.peer_id,
+      actorId: actorId || undefined,
+      actorName: actorName || undefined,
+      inviteCode: `DFP2-${encodeBase64Url(JSON.stringify({
       version: 2,
       roomCode: room.room_code,
       peerId: invitation.peer_id,
@@ -131,8 +149,11 @@ export function encodePeerInvites(
       stunUrl: normalizedStunUrls[0] ?? '',
       stunUrls: normalizedStunUrls,
       expiresAt: room.expires_at,
+      actorId: actorId || undefined,
+      actorName: actorName || undefined,
     } satisfies PeerInvite))}`,
-  }))
+    }
+  })
 }
 
 export function decodePeerInvite(value: string): PeerInvite {
@@ -174,6 +195,16 @@ export function decodePeerInvite(value: string): PeerInvite {
     || typeof invite.expiresAt !== 'string'
     || invite.expiresAt.length > 64
     || !Number.isFinite(Date.parse(invite.expiresAt))
+    || (invite.actorId !== undefined && (
+      typeof invite.actorId !== 'string'
+      || !invite.actorId.trim()
+      || invite.actorId.length > 128
+    ))
+    || (invite.actorName !== undefined && (
+      typeof invite.actorName !== 'string'
+      || !invite.actorName.trim()
+      || invite.actorName.length > 200
+    ))
   ) {
     throw new Error('invalid_invite')
   }

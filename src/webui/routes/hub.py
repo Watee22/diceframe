@@ -9,7 +9,7 @@ from typing import Any
 
 from aiohttp import web
 
-from src.hub_client import HubHTTPError
+from src.hub_client import HubConnectionUnavailable, HubHTTPError
 from src.webui.routes._common import _get_api, _require_confirmed_request
 
 
@@ -89,6 +89,15 @@ async def api_hub_rendezvous_room_create(request: web.Request) -> web.Response:
         result = await _get_api(request).create_rendezvous_room(peer_count)
     except HubHTTPError as exc:
         return _hub_error_response(exc)
+    except HubConnectionUnavailable:
+        return web.json_response(
+            {
+                "ok": False,
+                "error": "暂时无法连接 DiceFrame Hub，请检查网络后重试",
+                "error_code": "hub_connection_unavailable",
+            },
+            status=502,
+        )
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=502)
     return web.json_response(result, status=201)

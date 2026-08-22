@@ -55,6 +55,7 @@ describe('peer invite code', () => {
       room,
       [DEFAULT_STUN_URL, METERED_STUN_URL],
       'web|game|host',
+      [{ actorId: 'player_123', actorName: '夜莺' }, {}],
     )
 
     expect(invitations).toHaveLength(2)
@@ -68,11 +69,15 @@ describe('peer invite code', () => {
       guestToken: room.invitations[0].token,
       gameKey: 'web|game|host',
       stunUrls: [DEFAULT_STUN_URL, METERED_STUN_URL],
+      actorId: 'player_123',
+      actorName: '夜莺',
     })
+    expect(invitations[0]).toMatchObject({ actorId: 'player_123', actorName: '夜莺' })
     expect(decodePeerInvite(invitations[1].inviteCode)).toMatchObject({
       peerId: room.invitations[1].peer_id,
       guestToken: room.invitations[1].token,
     })
+    expect(decodePeerInvite(invitations[1].inviteCode).actorId).toBeUndefined()
   })
 
   it('rejects malformed, oversized, and tampered invitations', () => {
