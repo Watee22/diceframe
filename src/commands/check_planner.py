@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from src.engine.checks import build_check_request
+from src.engine.dice import d20_dc_cap
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
 from src.llm.parser import sanitize_narration
@@ -294,9 +295,9 @@ def normalize_check_specs(
             except (TypeError, ValueError):
                 errors.append(f"checks[{index}] target 无效")
                 continue
-            if not 1 <= target <= 40:
-                errors.append(f"checks[{index}] target 超出 1..40")
-                continue
+            # DC 硬上限（规则 dc_table 最高档 + 5，默认 20）：
+            # 防止后期情境报出 25–30 的失控 DC 导致“只有自然 20 才成功”。
+            target = max(1, min(d20_dc_cap(rule), target))
         modifier = max(-20, min(20, int(raw.get("modifier", 0) or 0)))
         advantage = str(raw.get("advantage") or "normal")
         advantage_mode = advantage if advantage in {"advantage", "disadvantage"} else ""

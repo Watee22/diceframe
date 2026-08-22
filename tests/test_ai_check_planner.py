@@ -51,6 +51,18 @@ def make_rule() -> RuleSystem:
     })
 
 
+def test_d20_target_is_clamped_to_dc_cap() -> None:
+    """后期失控 DC（25–30）必须被钳到硬上限（dc_table 最高档 + 5）。"""
+    from src.engine.dice import d20_dc_cap
+    instance = make_instance()
+    rule = make_rule()
+    planned, errors = normalize_check_specs(instance, rule, [
+        {"player": "p1", "attribute": "str", "target": 30},
+    ])
+    assert errors == []
+    assert planned[0][1]["target"] == d20_dc_cap(rule)
+
+
 def test_normalize_check_specs_accepts_valid_entries_and_rejects_bad_player() -> None:
     instance = make_instance()
     planned, errors = normalize_check_specs(instance, make_rule(), [

@@ -9,6 +9,7 @@ from src.engine.dice import (
     check_d20,
     check_d20_advantage,
     coc_success_level,
+    d20_dc_cap,
     parse_player_roll,
     roll,
 )
@@ -39,6 +40,22 @@ class TestRoll:
     def test_invalid_formula(self):
         with pytest.raises(ValueError):
             roll("invalid")
+
+    def test_dice_count_and_sides_limits(self):
+        """公网 bot 防滥用：超大骰数/面数必须报错，0d6 也报错。"""
+        with pytest.raises(ValueError):
+            roll("999999999d6")
+        with pytest.raises(ValueError):
+            roll("0d6")
+        with pytest.raises(ValueError):
+            roll("d1")
+
+    def test_multi_dice_natural_excludes_modifier(self, monkeypatch):
+        """natural 是未加修正的原始值：多骰=骰面之和，不含修正。"""
+        monkeypatch.setattr("random.randint", lambda a, b: 3)
+        r = roll("2d6+5")
+        assert r.natural == 6
+        assert r.total == 11
 
 
 class TestCheckD20:
@@ -101,24 +118,32 @@ class TestCheckD100:
     def test_below_threshold(self, monkeypatch):
         monkeypatch.setattr("random.randint", lambda a, b: 45)
         _, verdict = check_d100(threshold=50)
-        assert verdict == "成功"
+        assert verdict == "普通成功"
 
     def test_above_threshold(self, monkeypatch):
         monkeypatch.setattr("random.randint", lambda a, b: 70)
         _, verdict = check_d100(threshold=50)
         assert verdict == "失败"
 
-    def test_critical_success(self, monkeypatch):
+    def test_extreme_success(self, monkeypatch):
+        """统一 CoC 判定后：5 ≤ 50//5 走极难成功，不再是旧的大成功。"""
         monkeypatch.setattr("random.randint", lambda a, b: 5)
         result, verdict = check_d100(threshold=50)
-        assert verdict == "大成功"
+        assert verdict == "极难成功"
         assert result.natural == 5
 
-    def test_fumble(self, monkeypatch):
+    def test_high_skill_96_is_failure_not_fumble(self, monkeypatch):
+        """CoC 7e：技能 ≥ 50 时只有 100 才是大失败，96 只是失败。"""
         monkeypatch.setattr("random.randint", lambda a, b: 96)
         result, verdict = check_d100(threshold=80)
+        assert verdict == "失败"
+        assert not result.is_fumble
+
+    def test_low_skill_96_is_fumble(self, monkeypatch):
+        monkeypatch.setattr("random.randint", lambda a, b: 96)
+        result, verdict = check_d100(threshold=40)
         assert verdict == "大失败"
-        assert result.natural == 96
+        assert result.is_fumble
 
 
 class TestCheckD100Bonus:
@@ -127,7 +152,7 @@ class TestCheckD100Bonus:
         monkeypatch.setattr("random.randint", lambda a, b: next(rolls))
         result, verdict = check_d100_bonus(threshold=30, bonus_dice=1)
         assert result.total == 24
-        assert verdict == "成功"
+        assert verdict == "普通成功"
 
     def test_penalty_dice_uses_worst_tens(self, monkeypatch):
         rolls = iter([4, 2, 8])
@@ -142,6 +167,28 @@ class TestCheckD100Bonus:
         result, verdict = check_d100_bonus(threshold=99)
         assert result.total == 100
         assert verdict == "大失败"
+
+    def test_bonus_with_zero_units_picks_lower_final_value(self, monkeypatch):
+        """回归：个位=0、十位=[0,30] 时最终值为 [100,30]，奖励骰必须取 30。
+
+        旧实现先对十位取 min 再转换 00→100，会把奖励骰结果反转成 100。
+        """
+        rolls = iter([0, 0, 3])
+        monkeypatch.setattr("random.randint", lambda a, b: next(rolls))
+        result, verdict = check_d100_bonus(threshold=50, bonus_dice=1)
+        assert result.total == 30
+        assert verdict == "普通成功"
+
+    def test_penalty_with_zero_units_picks_hundred(self, monkeypatch):
+        rolls = iter([0, 0, 3])
+        monkeypatch.setattr("random.randint", lambda a, b: next(rolls))
+        result, verdict = check_d100_bonus(threshold=50, penalty_dice=1)
+        assert result.total == 100
+        assert verdict == "大失败"
+
+
+def test_d20_dc_cap_default():
+    assert d20_dc_cap(None) == 20
 
 
 class TestCheckCoc:

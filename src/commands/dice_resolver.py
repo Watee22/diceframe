@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from src.engine.dice import DiceResult, check_coc, check_d20_advantage, check_d100, coc_success_level, roll
+from src.engine.dice import DiceResult, check_coc, check_d20_advantage, check_d100, coc_success_level, d20_dc_cap, roll
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
 from src.rules.rule_system import RuleSystem
@@ -90,7 +90,7 @@ class DiceResolver:
 
         requested_target = request.get("target")
         dc = (
-            max(1, min(40, int(requested_target)))
+            max(1, min(d20_dc_cap(rule), int(requested_target)))
             if requested_target is not None
             else (rule.dc_for_difficulty(instance.difficulty, "normal") if rule else 10)
         )
