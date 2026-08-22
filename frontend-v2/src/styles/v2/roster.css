@@ -53,13 +53,13 @@
 .characters-page .current-character-actions {
   align-content: center;
   grid-template-columns: repeat(3, minmax(86px, 1fr));
-  min-width: 270px;
+  min-width: 0;
   gap: 6px;
 }
 
 .characters-page .current-character-actions:has(> button:nth-child(4)) {
   grid-template-columns: repeat(2, minmax(96px, 1fr));
-  min-width: 205px;
+  min-width: 0;
 }
 
 .characters-page .npc-strip {

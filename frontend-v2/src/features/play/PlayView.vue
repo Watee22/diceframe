@@ -599,7 +599,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main v-if="game.currentGame.value" class="play-page" :style="sceneImageStyle(playSceneImageUrl)">
+  <main
+    v-if="game.currentGame.value"
+    class="play-page play-page-immersive"
+    :style="sceneImageStyle(playSceneImageUrl)"
+  >
     <header class="topbar play-hud">
       <div class="play-hud-main">
         <button v-if="!isPlayer" class="icon play-back" :title="t('backToOverview')" @click="goBack">←</button>

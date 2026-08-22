@@ -215,7 +215,8 @@
 }
 
 .game-card {
-  display: block;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   padding: 0;
   border-radius: var(--df-radius-lg);
@@ -337,24 +338,42 @@
 }
 
 .game-card-body {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 11px;
   padding: 18px;
 }
 
 .game-card-body h2 {
-  min-height: 0;
+  display: -webkit-box;
+  min-height: 2.7em;
   margin: 0;
+  overflow: hidden;
   font-size: 23px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .game-card-body .scene-line {
-  min-height: 0;
+  display: -webkit-box;
+  min-height: 3.1em;
+  margin: 0;
+  overflow: hidden;
   color: var(--df-text-secondary);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .game-card-body .meta {
   margin: 0;
+}
+
+.game-card-actions {
+  margin-top: auto;
 }
 
 .game-card-enter {

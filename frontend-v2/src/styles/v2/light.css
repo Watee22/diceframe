@@ -184,7 +184,7 @@ body.light .thinking-message {
     scroll-margin-bottom: calc(84px + env(safe-area-inset-bottom));
   }
 
-  .app-shell-play .play-main > .composer {
+  .play-page-immersive .play-main > .composer {
     margin-bottom: 0;
     scroll-margin-bottom: 0;
   }

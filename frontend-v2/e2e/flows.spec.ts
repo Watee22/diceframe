@@ -27,9 +27,28 @@ test('gm and player render the same game through shared play components', async 
   await gmPage.locator('.portrait-edit-button').click()
   await expect(gmPage.locator('.portrait-picker')).toBeVisible()
   const gmComposerBottom = await gmPage.locator('.composer').evaluate(element => element.getBoundingClientRect().bottom)
-  const playerComposerBottom = await playerPage.locator('.composer').evaluate(element => element.getBoundingClientRect().bottom)
+  const playerLayout = await playerPage.evaluate(() => {
+    const page = document.querySelector<HTMLElement>('.play-page')!.getBoundingClientRect()
+    const hud = document.querySelector<HTMLElement>('.play-hud')!.getBoundingClientRect()
+    const main = document.querySelector<HTMLElement>('.play-main')!.getBoundingClientRect()
+    const composer = document.querySelector<HTMLElement>('.composer')!.getBoundingClientRect()
+
+    return {
+      viewportHeight: window.innerHeight,
+      pageTop: page.top,
+      pageBottom: page.bottom,
+      hudTop: hud.top,
+      mainBottom: main.bottom,
+      composerBottom: composer.bottom,
+    }
+  })
   expect(gmComposerBottom).toBeLessThanOrEqual(768)
-  expect(playerComposerBottom).toBeLessThanOrEqual(844)
+  expect(Math.abs(playerLayout.pageTop)).toBeLessThanOrEqual(1)
+  expect(Math.abs(playerLayout.hudTop)).toBeLessThanOrEqual(1)
+  expect(Math.abs(playerLayout.viewportHeight - playerLayout.pageBottom)).toBeLessThanOrEqual(1)
+  expect(Math.abs(playerLayout.viewportHeight - playerLayout.mainBottom)).toBeLessThanOrEqual(1)
+  expect(playerLayout.composerBottom).toBeGreaterThanOrEqual(playerLayout.viewportHeight - 12)
+  expect(playerLayout.composerBottom).toBeLessThanOrEqual(playerLayout.viewportHeight + 1)
   await playerPage.getByRole('button', { name: '状态' }).click()
   await expect(playerPage.getByRole('heading', { name: player.character_name, exact: true })).toBeVisible()
   await expect(playerPage.getByPlaceholder('用自然语言描述行动')).toBeVisible()

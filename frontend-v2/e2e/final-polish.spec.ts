@@ -155,22 +155,43 @@ test('plugin marketplace cards align titles and stretch evenly per row', async (
   }
 })
 
-test('current-game character actions form one even row', async ({ page }, testInfo) => {
+test('multi-player character actions stay in a separate even row', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop visual contract')
   await authenticate(page)
   await page.addInitScript(() => localStorage.setItem('currentGame', 'web|e2e-room|web_bot'))
+  await page.setViewportSize({ width: 1940, height: 1080 })
   await page.goto('/#/characters')
 
   const cards = page.locator('.current-character-card')
   await expect(cards.first()).toBeVisible()
+  await page.evaluate(() => {
+    const grid = document.querySelector<HTMLElement>('.current-character-grid')
+    const seed = grid?.querySelector<HTMLElement>('.current-character-card')
+    if (!grid || !seed) return
+    while (grid.querySelectorAll('.current-character-card').length < 5) {
+      grid.append(seed.cloneNode(true))
+    }
+  })
   const geometry = await cards.evaluateAll(elements => elements.map(element => {
+    const identity = element.querySelector<HTMLElement>('.current-character-identity')!.getBoundingClientRect()
+    const actions = element.querySelector<HTMLElement>('.current-character-actions')!.getBoundingClientRect()
     const buttons = Array.from(element.querySelectorAll<HTMLElement>('.current-character-actions button'))
       .map(button => button.getBoundingClientRect())
       .map(rect => ({ top: rect.top, width: rect.width, height: rect.height }))
-    return buttons
+    return {
+      identityBottom: identity.bottom,
+      actionsTop: actions.top,
+      cardRight: element.getBoundingClientRect().right,
+      actionsRight: actions.right,
+      buttons,
+    }
   }))
 
-  for (const buttons of geometry.filter(buttons => buttons.length === 3)) {
+  expect(geometry).toHaveLength(5)
+  for (const { identityBottom, actionsTop, cardRight, actionsRight, buttons } of geometry) {
+    expect(actionsTop).toBeGreaterThanOrEqual(identityBottom + 8)
+    expect(actionsRight).toBeLessThanOrEqual(cardRight + 1)
+    if (buttons.length !== 3) continue
     expect(Math.max(...buttons.map(button => button.top)) - Math.min(...buttons.map(button => button.top))).toBeLessThanOrEqual(1)
     expect(Math.max(...buttons.map(button => button.width)) - Math.min(...buttons.map(button => button.width))).toBeLessThanOrEqual(1)
     expect(Math.max(...buttons.map(button => button.height)) - Math.min(...buttons.map(button => button.height))).toBeLessThanOrEqual(1)

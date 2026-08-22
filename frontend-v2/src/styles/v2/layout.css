@@ -351,21 +351,23 @@
     display: none;
   }
 
-  .app-shell-play .game-sidebar,
-  .app-shell-play .play-control-rail,
-  .app-shell-play .game-sidebar.collapsed,
-  .app-shell-play .play-control-rail.collapsed {
+  /* PlayView 内部的响应式布局必须锚定组件自身，不能锚定外层 app-shell-play。
+     公开玩家页没有应用壳；统一用这个类可保证房主和分享页始终一起变化。 */
+  .play-page-immersive .game-sidebar,
+  .play-page-immersive .play-control-rail,
+  .play-page-immersive .game-sidebar.collapsed,
+  .play-page-immersive .play-control-rail.collapsed {
     top: 0;
     bottom: 0;
     padding-bottom: calc(14px + env(safe-area-inset-bottom));
   }
 
-  .app-shell-play .play-drawer-backdrop {
+  .play-page-immersive .play-drawer-backdrop {
     inset: 0;
   }
 
   /* 压缩对局页顶栏与场景条：一行 title + tools，统计行与场景副标让位 */
-  .app-shell-play .play-hud {
+  .play-page-immersive .play-hud {
     position: relative;
     top: auto;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -375,19 +377,19 @@
     gap: 8px;
   }
 
-  .app-shell-play .play-hud-stats {
+  .play-page-immersive .play-hud-stats {
     display: none;
   }
 
-  .app-shell-play .play-titleblock h1 {
+  .play-page-immersive .play-titleblock h1 {
     font-size: 16px;
   }
 
-  .app-shell-play .play-main {
+  .play-page-immersive .play-main {
     padding-bottom: calc(6px + env(safe-area-inset-bottom));
   }
 
-  .app-shell-play .scene-strip {
+  .play-page-immersive .scene-strip {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -396,22 +398,22 @@
     padding: 6px 10px;
   }
 
-  .app-shell-play .scene-strip::after {
+  .play-page-immersive .scene-strip::after {
     display: none;
   }
 
-  .app-shell-play .scene-title {
+  .play-page-immersive .scene-title {
     display: flex;
     align-items: baseline;
     gap: 6px;
     min-width: 0;
   }
 
-  .app-shell-play .scene-title p {
+  .play-page-immersive .scene-title p {
     display: none;
   }
 
-  .app-shell-play .scene-strip h2 {
+  .play-page-immersive .scene-strip h2 {
     margin: 0;
     font-size: 14px;
     white-space: nowrap;
@@ -419,11 +421,11 @@
     text-overflow: ellipsis;
   }
 
-  .app-shell-play .scene-chips {
+  .play-page-immersive .scene-chips {
     max-width: none;
   }
 
-  .app-shell-play .scene-chips span {
+  .play-page-immersive .scene-chips span {
     padding: 2px 6px;
     font-size: 11px;
   }
@@ -491,9 +493,10 @@
     overflow: hidden;
   }
 
-  .app-shell-play .play-page {
-    height: 100%;
+  .play-page.play-page-immersive {
+    height: var(--app-h, 100dvh);
     min-height: 0;
+    overflow: hidden;
   }
 
   .play-page {
@@ -508,7 +511,7 @@
     grid-template-areas: "title tools";
   }
 
-  .app-shell-play .play-hud {
+  .play-page-immersive .play-hud {
     position: relative;
     top: auto;
   }
@@ -626,7 +629,7 @@
     min-height: 0;
   }
 
-  .app-shell-play .play-main {
+  .play-page-immersive .play-main {
     padding-bottom: 6px;
     overflow: hidden;
   }

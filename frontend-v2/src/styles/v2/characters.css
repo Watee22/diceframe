@@ -48,9 +48,9 @@
 .current-character-card {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
   min-height: 142px;
   padding: 15px 20px;
   overflow: hidden;
@@ -175,7 +175,9 @@
 .current-character-actions {
   display: grid !important;
   grid-template-columns: repeat(3, minmax(86px, 1fr));
-  min-width: 270px;
+  width: min(100%, 520px);
+  min-width: 0;
+  justify-self: end;
   gap: 6px;
 }
 
@@ -188,7 +190,7 @@
 
 .current-character-actions:has(> button:nth-child(4)) {
   grid-template-columns: repeat(2, minmax(118px, 1fr));
-  min-width: 260px;
+  min-width: 0;
 }
 
 .npc-strip {
