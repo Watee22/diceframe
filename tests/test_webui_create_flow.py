@@ -1630,3 +1630,27 @@ def test_save_entry_skips_builtin_template(web_api):
     })
 
     assert (worlds_dir / "coc_sync.json").read_text(encoding="utf-8") == original
+
+
+def test_save_entry_generates_id_when_missing(web_api):
+    """UI 导入的 body 可能完全不带 id 键（undefined 被 JSON 丢弃），不能 500。"""
+    api, lorebook, _registry, _fake_llm, _worlds_dir = web_api
+    lorebook.create_world("import_world", "导入世界")
+
+    result = api.save_entry({
+        "world_id": "import_world", "name": "无ID条目", "type": "other",
+        "keywords": ["k"], "content": "c", "tier": "background",
+    })
+
+    assert result.get("ok") is True
+    assert result.get("entry_id")
+    assert lorebook.get_entry(result["entry_id"]) is not None
+
+
+def test_save_entry_rejects_bad_target(web_api):
+    api, lorebook, _registry, _fake_llm, _worlds_dir = web_api
+    lorebook.create_world("import_world2", "导入世界2")
+
+    assert api.save_entry({"world_id": "missing_world", "name": "x"}).get("ok") is False
+    assert api.save_entry({"world_id": "import_world2", "name": "   "}).get("ok") is False
+    assert api.save_entry({"world_id": "", "name": "x"}).get("ok") is False

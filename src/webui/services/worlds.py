@@ -64,9 +64,33 @@ def get_entry(api: "WebAPI", entry_id: str) -> dict[str, Any] | None:
 
 
 def save_entry(api: "WebAPI", entry: dict) -> dict[str, Any]:
+    # 导入/新增入口的防御性校验：缺键时生成 id 或返回 400 级错误，
+    # 不让 KeyError 漏成 500（UI 导入的 body 可能完全不带 id 键）。
+    if not isinstance(entry, dict):
+        return {"ok": False, "error": "世界书条目必须是对象"}
+    world_id = str(entry.get("world_id") or "").strip()
+    name = str(entry.get("name") or "").strip()
+    if not world_id:
+        return {"ok": False, "error": "缺少 world_id"}
+    if api._lore.get_world(world_id) is None:
+        return {"ok": False, "error": "世界不存在"}
+    if not name:
+        return {"ok": False, "error": "世界书条目名称不能为空"}
+    entry = dict(entry)
+    entry["world_id"] = world_id
+    entry["name"] = name
+    entry_type = str(entry.get("type") or "other").strip()
+    entry["type"] = entry_type if entry_type in _LOREBOOK_ENTRY_TYPES else "other"
+    tier = str(entry.get("tier") or "background").strip()
+    entry["tier"] = tier if tier in _LOREBOOK_TIERS else "background"
+    if not str(entry.get("id") or "").strip():
+        existing = {
+            str(e.get("id")) for e in api._lore.list_entries(world_id)
+        }
+        entry["id"] = _entry_id_from_name(world_id, name, existing, 0)
     api._lore.add_entry(entry)
-    rebuild_lorebook_index(api, entry.get("world_id", ""))
-    _sync_user_template_lorebook(api, entry.get("world_id", ""))
+    rebuild_lorebook_index(api, world_id)
+    _sync_user_template_lorebook(api, world_id)
     return {"ok": True, "entry_id": entry["id"]}
 
 

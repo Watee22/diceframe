@@ -40,7 +40,9 @@ async def api_lorebook_create(request: web.Request) -> web.Response:
     body = await request.json()
     if len(str(body.get("content", ""))) > MAX_LOREBOOK_CHARS:
         return web.json_response({"error": f"世界书条目过长（上限 {MAX_LOREBOOK_CHARS} 字）"}, status=400)
-    _get_api(request).save_entry(body)
+    result = _get_api(request).save_entry(body)
+    if not result.get("ok"):
+        return web.json_response(result, status=400)
     return web.json_response({"ok": True})
 
 
