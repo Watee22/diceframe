@@ -662,6 +662,7 @@ export interface WorldTemplateSummary {
   world_name?: string
   description?: string
   default_rule?: string
+  recommended_rules?: string[]
   scene_image?: SceneImageRef
   language?: string
   [key: string]: unknown

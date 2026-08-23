@@ -6,6 +6,7 @@
   "starter_scene": "你们在「金狮酒馆」的大厅里，壁炉的火光映照着木质墙壁。酒馆老板老汤姆正在擦拭吧台，几个猎人坐在角落里低声交谈。公告板上钉着一张泛黄的羊皮纸——冒险者公会发布的任务：调查北边森林最近出现的异常动静，赏金50金币。",
   "suggested_difficulty": "标准",
   "default_rule": "freeform_fantasy",
+    "recommended_rules": ["freeform_fantasy", "dnd5e"],
   "starter_lorebook": [
     {
       "id": "npc_innkeeper",

@@ -351,9 +351,25 @@ def _world_template_summary(data: dict[str, Any], fallback_id: str) -> dict[str,
         "language": data.get("language", ""),
         "suggested_difficulty": data.get("suggested_difficulty", "标准"),
         "default_rule": data.get("default_rule", "freeform_fantasy"),
+        "recommended_rules": _recommended_rules(data),
         "scene_image": data.get("scene_image"),
         "lorebook_count": len(data.get("starter_lorebook", [])),
     }
+
+
+def _recommended_rules(data: dict[str, Any]) -> list[str]:
+    """世界模板的推荐规则列表（可选字段）；去重、去空，缺失时返回空列表。"""
+    raw = data.get("recommended_rules")
+    if not isinstance(raw, list):
+        return []
+    result: list[str] = []
+    for item in raw[:6]:
+        if not isinstance(item, str):
+            continue
+        rule_id = item.strip()
+        if rule_id and rule_id not in result:
+            result.append(rule_id)
+    return result
 
 
 def _plugin_world_templates(api: "WebAPI") -> list[dict[str, Any]]:

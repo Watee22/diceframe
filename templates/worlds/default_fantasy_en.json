@@ -7,6 +7,7 @@
   "starter_scene": "You are gathered in the taproom of the Golden Lion Inn. Firelight glows across dark beams and rain taps against the shutters. Old Tom, the innkeeper, polishes a mug behind the bar while two hunters argue in low voices near the hearth. On the guild board hangs a fresh notice: investigate the strange activity in Blackpine Forest. Reward: 50 gold.",
   "suggested_difficulty": "标准",
   "default_rule": "freeform_fantasy",
+    "recommended_rules": ["freeform_fantasy", "dnd5e"],
   "starter_lorebook": [
     {
       "id": "npc_old_tom",

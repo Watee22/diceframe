@@ -14,6 +14,7 @@ import { importTavernCard } from '@/utils/characterImport'
 import { rememberCurrentGame } from '@/stores/gameContext'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { contentLanguageOf, filterByContentLanguage } from '@/utils/contentLanguage'
+import { recommendedRuleSummaries } from '@/utils/recommendedRules'
 import { characterCardNeedsConversion } from '@/utils/characterCards'
 import { ruleSceneUrl } from '@/composables/useBackgroundImages'
 import { resolveSceneImageUrl, revokeSceneImageUrl, sceneImageStyle, uploadSceneImage } from '@/api/sceneImages'
@@ -80,6 +81,7 @@ const ruleAttrs = computed(() => ruleDetail.value?.attributes || [])
 const skillPool = computed(() => ruleDetail.value?.skill_pool || ruleDetail.value?.skills || [])
 const attrTotal = computed(() => ruleDetail.value?.attribute_points || 60)
 const selectedTemplateWorldName = computed(() => worldNameOf(worlds.value.find(item => worldIdOf(item) === world.value) || {}))
+const recommendedRulesList = computed(() => recommendedRuleSummaries(activeWorldTemplate.value, rules.value))
 const confirmationName = computed(() => {
   if (seed.value.trim()) return t('restoreBySeed')
   if (mode.value === 'template') return name.value.trim() || selectedTemplateWorldName.value || t('modeTemplate')
@@ -104,6 +106,10 @@ function worldNameOf(w: WorldTemplateSummary | WorldSummary): string { return St
 function worldLanguageLabel(w: WorldTemplateSummary | WorldSummary): string { return contentLanguageOf(w) === 'en' ? t('english') : t('chinese') }
 function worldOptionLabel(w: WorldTemplateSummary | WorldSummary): string { return `${worldNameOf(w)} · ${worldLanguageLabel(w)}` }
 function ruleNameOf(r: RuleSummary): string { return gameLanguage.value === 'en' ? String(r.rule_name_en || r.rule_name || r.rule_id) : (r.rule_name || r.rule_id) }
+function ruleDescriptionOf(r: RuleSummary): string {
+  const en = String(r.description_en || ''), zh = String(r.description || '')
+  return gameLanguage.value === 'en' ? (en || zh) : (zh || en)
+}
 function cloneCharacter<T extends CharacterSheet>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
 function gameDefault(zh: string, en: string): string { return gameLanguage.value === 'en' ? en : zh }
 function ensureCharacter(value: CharacterSheet): CreateCharacter {
@@ -391,6 +397,17 @@ async function create() {
               <template v-if="mode === 'template'">
                 <label><span>{{ t('worldTemplate') }}</span><select v-model="world"><option v-for="w in availableWorlds" :key="worldIdOf(w)" :value="worldIdOf(w)">{{ worldOptionLabel(w) }}</option></select></label>
                 <label><span>{{ t('adventureName') }}</span><input v-model="name" :placeholder="t('useWorldName')"></label>
+                <div v-if="recommendedRulesList.length" class="create-recommended-rules wide">
+                  <span class="rec-head">{{ t('recommendedRules') }}</span>
+                  <div class="rec-grid">
+                    <button v-for="r in recommendedRulesList" :key="r.rule_id" type="button" :class="['rec-card', { active: rule === r.rule_id }]" @click="rule = r.rule_id">
+                      <strong>{{ ruleNameOf(r) }}</strong>
+                      <small>{{ t('recommended') }}</small>
+                      <p>{{ ruleDescriptionOf(r) }}</p>
+                    </button>
+                  </div>
+                  <small class="rec-hint">{{ t('recommendedHint') }}</small>
+                </div>
               </template>
               <template v-else-if="mode === 'custom'">
                 <label><span>{{ t('customWorldName') }}</span><input v-model="customName" :placeholder="t('customWorldPlaceholder')"></label>
