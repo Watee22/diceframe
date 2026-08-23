@@ -102,6 +102,17 @@ function skillTitle(s: string | CharacterSkill): string {
 }
 
 const levelUpPoints = computed(() => Number(cs.value.level_up_points || 0))
+const statusLabel = computed(() => {
+  const s = String(cs.value.status || '')
+  if (s === 'downed') return t('statusDowned')
+  if (s === 'stable') return t('statusStable')
+  return s
+})
+const deathSaves = computed<{ success: number; failure: number } | null>(() => {
+  const ds = cs.value.death_saves
+  if (!ds || typeof ds !== 'object') return null
+  return { success: Number((ds as Record<string, unknown>).success || 0), failure: Number((ds as Record<string, unknown>).failure || 0) }
+})
 const showLevelUp = ref(false)
 const fallbackLevelUpAttrs: RuleAttr[] = [
   { key: 'str', name: '力量', name_en: 'STR', min: 1, max: 100 },
@@ -135,13 +146,16 @@ function submitLevelUp(attrs: Record<string, number>) {
       <div class="character-title">
         <h3>{{ player.character_name }}</h3>
         <span v-if="cs.deceased" class="tag tag-deceased">{{ t('unavailable') }}</span>
-        <span v-if="cs.status" class="tag tag-warn">{{ cs.status }}</span>
+        <span v-if="cs.status" class="tag tag-warn">{{ statusLabel }}</span>
         <span class="gold">{{ currencyName }} {{ gold }}</span>
       </div>
     </div>
     <div class="character-vitals">
       <div class="hp"><span>HP</span><strong>{{ hp.current }} / {{ hp.max }}</strong></div>
       <div class="hpbar"><i :style="{ width: hpPct + '%' }" /></div>
+      <div v-if="deathSaves && cs.status === 'downed'" class="stat-row">
+        <div class="stat-head"><span class="stat-label">{{ t('deathSaves') }}</span><strong>{{ deathSaves.success }}✓ / {{ deathSaves.failure }}✗</strong></div>
+      </div>
 
       <div v-for="s in specials" :key="s.key" class="stat-row" :class="s.color">
         <div class="stat-head"><span class="stat-label">{{ s.name }}</span><strong>{{ s.current }}{{ s.max ? ' / ' + s.max : '' }}</strong></div>

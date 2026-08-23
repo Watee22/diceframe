@@ -47,7 +47,7 @@ def test_dnd5e_mechanics_identical_across_languages() -> None:
     zh = json.loads((RULES / "dnd5e.json").read_text(encoding="utf-8"))
     en = json.loads((RULES / "dnd5e_en.json").read_text(encoding="utf-8"))
     ja = json.loads((RULES / "dnd5e_ja.json").read_text(encoding="utf-8"))
-    keys = ["check_mechanic", "damage_mechanic", "armor_model", "max_check_dc", "dc_table"]
+    keys = ["check_mechanic", "damage_mechanic", "armor_model", "max_check_dc", "dc_table", "death_mechanic"]
     for other in (en, ja):
         for key in keys:
             assert zh[key] == other[key], key

@@ -16,6 +16,7 @@ from src.engine.checks import (
     is_explicit_attack_action,
     is_non_combat_declaration,
 )
+from src.engine.character_utils import is_conscious
 from src.engine.dice import d20_dc_cap
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
@@ -62,6 +63,8 @@ def _planner_context(instance: GameInstance, rule: RuleSystem | None) -> str:
     for action in instance.action_queue:
         uid = str(action.get("user_id") or "")
         if uid not in instance.players:
+            continue
+        if not is_conscious(instance.get_character_sheet(uid)):
             continue
         sheet = instance.get_character_sheet(uid)
         players.append({

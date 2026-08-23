@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from src.engine.character_utils import apply_resource_delta, get_resource, revive_character
+from src.engine.character_utils import apply_resource_delta, get_resource, revive_character, wake_character
 from src.engine.checks import build_check_request, roll_check_request
 from src.engine.game_instance import GameState
 from src.engine.dice import d20_critical_thresholds, roll
@@ -646,6 +646,8 @@ def _parse_gm_resource_change(inst, command: str, rule: RuleSystem | None) -> di
         character_sheet["deceased"] = False
         character_sheet.pop("death_round", None)
         revived = True
+    if resource_key == "hp" and after > 0:
+        wake_character(character_sheet)
     return {
         "uid": uid,
         "character_name": inst.players.get(uid, {}).get("character_name") or uid,

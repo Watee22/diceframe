@@ -17,6 +17,7 @@ from src.engine.character_utils import (
     bounded_hp_delta,
     get_resource,
     sync_death_from_hp,
+    wake_character,
 )
 from src.engine.game_instance import GameInstance
 from src.commands.madness_tracker import MadnessTracker
@@ -184,8 +185,9 @@ class PlayerStateApplier:
                     after = apply_resource_delta(cs, stat_key, int(delta), rule)
                     logger.info("规则资源变化: %s %s %+d -> %d", uid, stat_key, int(delta), after)
                 check_resource_triggers(instance, uid, rule)
-            # 死亡检测
-            if sync_death_from_hp(cs, instance.round_number):
+            # 死亡检测（治疗先苏醒，HP 归零再按规则落昏迷/死亡）
+            wake_character(cs)
+            if sync_death_from_hp(cs, instance.round_number, rule):
                 logger.info("%s 已死亡 (round=%d, hp=%d)",
                             instance.players[uid].get("character_name", uid),
                             instance.round_number, cs.get("hp", 0))

@@ -33,6 +33,7 @@
     "degree_affects_damage": false,
     "critical_damage": "double_damage_dice"
   },
+  "death_mechanic": {"hp_zero": "downed_death_saves"},
   "attributes": [
     {"key": "str", "name": "Strength", "min": 3, "max": 20},
     {"key": "dex", "name": "Dexterity", "min": 3, "max": 20},
@@ -88,7 +89,7 @@
     "Warlock": ["Eldritch Blast", "Pact Boon", "Devil's Sight", "Charm Person"],
     "Wizard": ["Fireball", "Magic Missile", "Shield", "Counterspell"]
   },
-  "gm_prompt_appendix": "You run Dungeons & Dragons 5th edition rules. Characters have a proficiency bonus (proficiency_bonus = 2 + (level-1)//4); check format: (Strength check: d20 + ability modifier + proficiency bonus vs DC). Advantage/disadvantage follow D&D 5e: advantage rolls 2d20 take the higher, disadvantage rolls 2d20 take the lower; when both apply they cancel and do not stack. In combat: an attack roll determines a hit (d20 + Strength/Dexterity modifier + proficiency bonus vs AC, with AC set by armor category and Dexterity); on a hit, roll damage dice + ability modifier, and a critical doubles only the damage dice, never the fixed modifier. DC 25/30 is reserved for clearly justified nearly-impossible situations and must not be the default. Each round a character can normally move and take 1 action; a bonus action is only available when a class feature or spell explicitly grants it. Only classes with a spellcasting feature use spell slots, and their count comes from the character's current class/level resources; never invent spell slots for non-casters. A short rest restores some HP (roll a Hit Die + Constitution modifier); a long rest fully restores HP and recovers spell slots.",
+  "gm_prompt_appendix": "You run Dungeons & Dragons 5th edition rules. Characters have a proficiency bonus (proficiency_bonus = 2 + (level-1)//4); check format: (Strength check: d20 + ability modifier + proficiency bonus vs DC). Advantage/disadvantage follow D&D 5e: advantage rolls 2d20 take the higher, disadvantage rolls 2d20 take the lower; when both apply they cancel and do not stack. In combat: an attack roll determines a hit (d20 + Strength/Dexterity modifier + proficiency bonus vs AC, with AC set by armor category and Dexterity); on a hit, roll damage dice + ability modifier, and a critical doubles only the damage dice, never the fixed modifier. DC 25/30 is reserved for clearly justified nearly-impossible situations and must not be the default. Each round a character can normally move and take 1 action; a bonus action is only available when a class feature or spell explicitly grants it. Only classes with a spellcasting feature use spell slots, and their count comes from the character's current class/level resources; never invent spell slots for non-casters. A short rest restores some HP (roll a Hit Die + Constitution modifier); a long rest fully restores HP and recovers spell slots. A character reduced to 0 HP falls unconscious and the system resolves death saving throws each round (3 successes stabilize, 3 failures kill, a natural 20 restores 1 HP and wakes them, a natural 1 counts as two failures); healing ends the unconsciousness, and the GM must not declare death directly.",
   "difficulty_instructions": {
     "轻松": "Monster CR 1 below party level, DC -2, plentiful loot",
     "标准": "Monster CR equals party level, DC as normal, reasonable loot",

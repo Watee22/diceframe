@@ -270,11 +270,82 @@ def mark_character_dead(character_sheet: dict, round_number: int | None = None) 
     return True
 
 
-def sync_death_from_hp(character_sheet: dict, round_number: int | None = None) -> bool:
-    """当 HP 归零时统一落死亡状态；本次新死亡返回 True。"""
+def sync_death_from_hp(character_sheet: dict, round_number: int | None = None, rule: Any | None = None) -> bool:
+    """当 HP 归零时落死亡/昏迷状态；本次新死亡返回 True。
+
+    规则声明 ``death_mechanic.hp_zero=downed_death_saves`` 时进入昏迷并
+    初始化死亡豁免计数（D&D 5e 式）；否则保持旧版即死语义。
+    """
     if int(character_sheet.get("hp", 0) or 0) > 0:
         return False
+    if (
+        rule is not None
+        and rule.death_mechanic["hp_zero"] == "downed_death_saves"
+        and not character_sheet.get("deceased")
+    ):
+        if str(character_sheet.get("status") or "") != "downed":
+            enter_downed_state(character_sheet)
+        return False
     return mark_character_dead(character_sheet, round_number)
+
+
+def enter_downed_state(character_sheet: dict) -> None:
+    """进入昏迷状态并重置死亡豁免计数。"""
+    character_sheet["status"] = "downed"
+    character_sheet["death_saves"] = {"success": 0, "failure": 0}
+
+
+def wake_character(character_sheet: dict) -> bool:
+    """HP>0 时清除昏迷/稳定状态与豁免计数；实际清除时返回 True。"""
+    if int(character_sheet.get("hp", 0) or 0) <= 0:
+        return False
+    changed = False
+    if str(character_sheet.get("status") or "") in {"downed", "stable"}:
+        character_sheet.pop("status", None)
+        changed = True
+    if "death_saves" in character_sheet:
+        character_sheet.pop("death_saves", None)
+        changed = True
+    return changed
+
+
+def is_conscious(character_sheet: dict) -> bool:
+    """角色是否能行动：未死亡且未昏迷（稳定者仍昏迷，不能行动）。"""
+    return not character_sheet.get("deceased") and str(
+        character_sheet.get("status") or ""
+    ) not in {"downed", "stable"}
+
+
+def apply_death_save(character_sheet: dict, roll_value: int, round_number: int | None = None) -> str:
+    """应用一次死亡豁免并返回事件：wake/dead/stable/success/failure/failure_double。"""
+    saves = character_sheet.get("death_saves")
+    if not isinstance(saves, dict):
+        saves = {"success": 0, "failure": 0}
+        character_sheet["death_saves"] = saves
+    value = int(roll_value)
+    if value >= 20:
+        set_hp(character_sheet, 1, character_sheet.get("max_hp"))
+        character_sheet.pop("status", None)
+        character_sheet.pop("death_saves", None)
+        return "wake"
+    if value <= 1:
+        saves["failure"] = int(saves.get("failure", 0) or 0) + 2
+        event = "failure_double"
+    elif value >= 10:
+        saves["success"] = int(saves.get("success", 0) or 0) + 1
+        event = "success"
+    else:
+        saves["failure"] = int(saves.get("failure", 0) or 0) + 1
+        event = "failure"
+    if int(saves.get("failure", 0) or 0) >= 3:
+        character_sheet.pop("status", None)
+        character_sheet.pop("death_saves", None)
+        mark_character_dead(character_sheet, round_number)
+        return "dead"
+    if int(saves.get("success", 0) or 0) >= 3:
+        character_sheet["status"] = "stable"
+        return "stable"
+    return event
 
 
 def revive_character(character_sheet: dict, method: str = "法术") -> bool:

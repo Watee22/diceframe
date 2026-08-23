@@ -220,7 +220,7 @@ async def sse_play(request: web.Request) -> web.StreamResponse:
                 )
                 # 状态
                 cs = inst.get_character_sheet(user_id)
-                await _write_play_event(resp, last_round, last_private_count, action_signature, public_signature, {'type':'state','hp':cs.get('hp'),'max_hp':cs.get('max_hp'),'gold':cs.get('gold'),'deceased':cs.get('deceased')})
+                await _write_play_event(resp, last_round, last_private_count, action_signature, public_signature, {'type':'state','hp':cs.get('hp'),'max_hp':cs.get('max_hp'),'gold':cs.get('gold'),'deceased':cs.get('deceased'),'status':cs.get('status'),'death_saves':cs.get('death_saves')})
                 public_event_sent = True
             elif inst.round_number < last_round:
                 # 回滚后回合号会倒退；同步游标，避免后续重新推进到旧回合号时漏报。

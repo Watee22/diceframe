@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from src.engine.checks import build_check_request, roll_check_request
+from src.engine.character_utils import is_conscious
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
 
@@ -42,6 +43,7 @@ def collect_actions_text(instance: GameInstance) -> str:
         format_action_line(instance, action)
         for action in instance.action_queue
         if action.get("user_id") in instance.players
+        and is_conscious(instance.get_character_sheet(str(action.get("user_id") or "")))
     ]
     actions_text = "\n".join(player_lines)
     if not actions_text:

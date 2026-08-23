@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from src.engine.combat import AttackResult, resolve_attack
+from src.engine.character_utils import is_conscious, sync_death_from_hp
 from src.engine.constants import WEAPON_DAMAGE
 from src.engine.dice import roll_initiative
 from src.engine.game_instance import GameInstance
@@ -146,6 +147,8 @@ class CombatResolver:
             actor_uid = str(action.get("user_id") or "")
             if actor_uid not in instance.players or not instance.is_alive(actor_uid):
                 continue
+            if not is_conscious(instance.get_character_sheet(actor_uid)):
+                continue
             check = self._authoritative_attack_check(instance, action, actor_uid)
             if check is None:
                 continue
@@ -210,6 +213,13 @@ class CombatResolver:
                     target_name=target_name,
                     rule=rule,
                 )
+                # 声明昏迷机制的规则：玩家目标 HP 归零立即落昏迷（旧版即死语义不变，仍走状态更新路径）。
+                if (
+                    target_uid
+                    and rule is not None
+                    and rule.death_mechanic["hp_zero"] == "downed_death_saves"
+                ):
+                    sync_death_from_hp(target, instance.round_number, rule)
                 # 战斗 outcome 属于行动的下游状态，不回写或改动
                 # 已形成的 CheckResult。进程重试时复用它，既不重掷
                 # 命中骰，也不重复扣 HP。

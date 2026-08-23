@@ -394,6 +394,13 @@ class RuleSystem:
         return model if model in {"sum", "category_lite"} else "sum"
 
     @property
+    def death_mechanic(self) -> dict:
+        """HP 归零语义：dead=旧版即死；downed_death_saves=D&D 式昏迷+死亡豁免。"""
+        declared = self.template.get("death_mechanic")
+        hp_zero = str((declared or {}).get("hp_zero") or "dead").strip() if isinstance(declared, dict) else "dead"
+        return {"hp_zero": hp_zero if hp_zero in {"dead", "downed_death_saves"} else "dead"}
+
+    @property
     def combat_model(self) -> str:
         return self.template.get("combat_model", "hp_based")
 
