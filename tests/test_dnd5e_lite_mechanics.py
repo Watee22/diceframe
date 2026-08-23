@@ -221,6 +221,25 @@ def test_dnd_sorcerer_dict_starter_focus_is_canonical_and_nonweapon(
     assert "damage_dice" not in focus
 
 
+def test_legacy_sum_rule_keeps_arcane_focus_name_compatibility(tmp_path) -> None:
+    rule_file = tmp_path / "legacy_focus.json"
+    rule_file.write_text(
+        json.dumps({
+            "rule_id": "legacy_focus",
+            "dice_system": "d20",
+            "armor_model": "sum",
+            "item_categories": {"equipment": ["法器"]},
+            "classes": [{"name": "施法者", "starter_equipment": ["法器"]}],
+        }),
+        encoding="utf-8",
+    )
+    equipment, inventory = build_starter_items(RuleSystem.load(rule_file), "施法者")
+    assert not inventory
+    assert equipment[0]["name"] == "法器"
+    assert equipment[0]["type"] == "weapon"
+    assert equipment[0]["damage"] == 3
+
+
 def _combat_instance(*, weapon: dict, attributes: dict[str, int], check: dict) -> GameInstance:
     instance = GameInstance(game_key=("test", "dnd-combat", "bot"), rule_id="dnd5e")
     instance.players["fighter"] = {
@@ -338,6 +357,24 @@ def test_combat_weapon_selection_uses_only_server_equipment() -> None:
     assert selected is not None and name == "Longbow"
     selected, name = resolver._weapon(sheet, "I attack.")
     assert selected is not None and name == "Longsword"
+
+
+@pytest.mark.parametrize("item_type", ["focus", "shield", "armor"])
+def test_combat_weapon_type_is_authoritative_for_localized_equipment(item_type: str) -> None:
+    weapon, name = CombatResolver._weapon(
+        {"equipment": [{"name": "法器" if item_type == "focus" else ("盾牌" if item_type == "shield" else "链甲"), "type": item_type}]},
+        "普通攻击",
+    )
+    assert weapon is None
+    assert name == "徒手"
+
+
+def test_dnd_sorcerer_with_only_arcane_focus_attacks_unarmed() -> None:
+    rule = _rule("dnd5e.json")
+    equipment, _inventory = build_starter_items(rule, "术士")
+    weapon, name = CombatResolver._weapon({"equipment": equipment}, "普通攻击")
+    assert weapon is None
+    assert name == "徒手"
 
 
 def test_dnd_weapon_attack_gets_proficiency_without_a_skill() -> None:

@@ -285,8 +285,11 @@ def resolve_attack(
     return AttackResult(
         attacker=attacker_name,
         target=resolved_target_name,
+        # A target already at 0 HP cannot expose the hit through an HP delta;
+        # retain the calculated positive damage for death-save resolution.
+        # Living targets keep the historical overkill-capped actual damage.
         damage=damage,
-        actual_damage=damage,
+        actual_damage=calculated_damage if hp_before <= 0 else damage,
         target_hp_before=hp_before,
         target_hp_after=hp_after,
         description=description,

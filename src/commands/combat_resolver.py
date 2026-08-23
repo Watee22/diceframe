@@ -11,7 +11,7 @@ from typing import Any
 
 from src.engine.combat import AttackResult, resolve_attack, _check_succeeded
 from src.engine.character_utils import is_conscious, record_death_save_failures, sync_death_from_hp
-from src.engine.constants import WEAPON_DAMAGE, WEAPON_DAMAGE_DICE, canonical_item_key
+from src.engine.constants import WEAPON_DAMAGE, canonical_item_key
 from src.engine.dice import roll_initiative
 from src.engine.game_instance import GameInstance
 from src.engine.language import localized_text
@@ -109,11 +109,14 @@ class CombatResolver:
             if not isinstance(item, dict):
                 continue
             name = str(item.get("name") or "").strip()
+            explicit_type = str(item.get("type") or "").strip().casefold()
             key = str(item.get("item_key") or canonical_item_key(name) or "").casefold()
-            # ``type`` is authoritative for modern saves. The second branch
-            # preserves old weapon records that predate the type field.
-            is_weapon = item.get("type") == "weapon" or (
-                bool(name) and (key in WEAPON_DAMAGE or name.casefold() in WEAPON_DAMAGE)
+            # A non-empty type is authoritative. Only records with no type at
+            # all use the pre-item-type name/legacy damage compatibility path.
+            is_weapon = (
+                explicit_type == "weapon"
+                if explicit_type
+                else bool(name) and (key in WEAPON_DAMAGE or name.casefold() in WEAPON_DAMAGE)
             )
             if is_weapon:
                 weapons.append({**item, "name": name or "徒手", "damage": item.get("damage", 2)})
@@ -248,6 +251,7 @@ class CombatResolver:
                     and rule is not None
                     and rule.death_mechanic["hp_zero"] == "downed_death_saves"
                     and _check_succeeded(check)
+                    and result.actual_damage > 0
                 ):
                     failures = 2 if result.is_critical else 1
                     outcome = record_death_save_failures(

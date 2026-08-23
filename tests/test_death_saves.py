@@ -253,6 +253,27 @@ def test_combat_hit_on_downed_player_accumulates_failure(monkeypatch) -> None:
     assert not cs.get("deceased")
 
 
+def test_combat_hit_with_zero_actual_damage_does_not_accumulate_failure(monkeypatch) -> None:
+    from src.commands.combat_resolver import CombatResolver
+
+    instance = _combat_instance_with_downed_target()
+    instance.players["a"]["character_sheet"]["attributes"]["str"] = 8
+    instance.players["a"]["character_sheet"]["equipment"] = [
+        {"name": "空手", "type": "weapon", "damage": 0, "slot": "main_hand"}
+    ]
+    request = {"check_id": "atk-zero", "actor_uid": "a", "kind": "attack", "opponent": "b", "dice_system": "d20", "attribute": "str", "target": 10}
+    instance.action_queue = [{"user_id": "a", "text": "我攻击尤落。", "check_request": request}]
+    instance.last_checks = [{
+        "check_id": "atk-zero", "actor_uid": "a", "kind": "attack", "opponent": "b",
+        "dice": "d20", "roll": 18, "total": 19, "verdict": "成功",
+        "is_critical": False, "is_fumble": False,
+    }]
+
+    CombatResolver().resolve_combat(instance, "ignored", "hp_based", _dnd())
+
+    assert instance.get_character_sheet("b")["death_saves"] == {"success": 0, "failure": 0}
+
+
 def test_combat_critical_on_downed_player_counts_double(monkeypatch) -> None:
     from src.commands.combat_resolver import CombatResolver
 

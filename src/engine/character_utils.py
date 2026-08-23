@@ -583,7 +583,7 @@ def build_starter_items(rule, class_name: str) -> tuple[list[dict], list[dict]]:
         display_key = str(iname).strip().casefold()
         item_key = canonical_item_key(iname)
         key = item_key or display_key
-        if key == "arcane_focus":
+        if category_lite and key == "arcane_focus":
             return {
                 "name": iname,
                 "type": "focus",
