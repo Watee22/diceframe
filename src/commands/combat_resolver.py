@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from src.engine.combat import AttackResult, resolve_attack
-from src.engine.character_utils import is_conscious, sync_death_from_hp
+from src.engine.combat import AttackResult, resolve_attack, _check_succeeded
+from src.engine.character_utils import is_conscious, record_death_save_failures, sync_death_from_hp
 from src.engine.constants import WEAPON_DAMAGE
 from src.engine.dice import roll_initiative
 from src.engine.game_instance import GameInstance
@@ -169,6 +169,7 @@ class CombatResolver:
             attacker_name = str(player.get("character_name") or actor_uid)
             weapon, weapon_name = self._weapon(character_sheet, str(action.get("text") or ""))
             attr_value = int(character_sheet.get("attributes", {}).get("str", 10) or 10)
+            was_downed = str((target or {}).get("status") or "") == "downed"
 
             attacker_faction = str(character_sheet.get("faction") or "party")
             target_faction = ""
@@ -220,6 +221,34 @@ class CombatResolver:
                     and rule.death_mechanic["hp_zero"] == "downed_death_saves"
                 ):
                     sync_death_from_hp(target, instance.round_number, rule)
+                # 5e：昏迷中受击累加死亡豁免失败（任何伤害 1 次、暴击 2 次）。
+                if (
+                    was_downed
+                    and rule is not None
+                    and rule.death_mechanic["hp_zero"] == "downed_death_saves"
+                    and _check_succeeded(check)
+                ):
+                    failures = 2 if result.is_critical else 1
+                    outcome = record_death_save_failures(
+                        target, failures, instance.round_number
+                    )
+                    result.description += localized_text(instance.language, {
+                        "zh-CN": (
+                            "（昏迷受击，死亡豁免失败满3次，死亡）"
+                            if outcome == "dead"
+                            else f"（昏迷受击，死亡豁免失败+{failures}）"
+                        ),
+                        "en": (
+                            " (hit while unconscious: 3rd failure, dies)"
+                            if outcome == "dead"
+                            else f" (hit while unconscious: death save failures +{failures})"
+                        ),
+                        "ja": (
+                            "（意識不明で被弾：失敗3回で死亡）"
+                            if outcome == "dead"
+                            else f"（意識不明で被弾：死亡セーヴ失敗+{failures}）"
+                        ),
+                    })
                 # 战斗 outcome 属于行动的下游状态，不回写或改动
                 # 已形成的 CheckResult。进程重试时复用它，既不重掷
                 # 命中骰，也不重复扣 HP。

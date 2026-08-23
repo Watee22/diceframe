@@ -309,6 +309,25 @@ def wake_character(character_sheet: dict) -> bool:
     return changed
 
 
+def record_death_save_failures(
+    character_sheet: dict, count: int, round_number: int | None = None
+) -> str | None:
+    """昏迷角色受击累加失败（5e：任何伤害 1 次、暴击 2 次）；满 3 次死亡返回 'dead'。"""
+    if str(character_sheet.get("status") or "") != "downed" or int(count) <= 0:
+        return None
+    saves = character_sheet.get("death_saves")
+    if not isinstance(saves, dict):
+        saves = {"success": 0, "failure": 0}
+        character_sheet["death_saves"] = saves
+    saves["failure"] = int(saves.get("failure", 0) or 0) + int(count)
+    if int(saves["failure"]) >= 3:
+        character_sheet.pop("status", None)
+        character_sheet.pop("death_saves", None)
+        mark_character_dead(character_sheet, round_number)
+        return "dead"
+    return "recorded"
+
+
 def is_conscious(character_sheet: dict) -> bool:
     """角色是否能行动：未死亡且未昏迷（稳定者仍昏迷，不能行动）。"""
     return not character_sheet.get("deceased") and str(

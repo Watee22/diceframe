@@ -11,6 +11,7 @@ from src.engine.character_utils import (
     apply_death_save,
     enter_downed_state,
     is_conscious,
+    record_death_save_failures,
     sync_death_from_hp,
     wake_character,
 )
@@ -131,3 +132,82 @@ def test_planner_context_excludes_downed_players() -> None:
     payload = json.loads(_planner_context(instance, _dnd()))
 
     assert {p["player_id"] for p in payload["players"]} == {"a"}
+
+
+def test_damage_while_downed_accumulates_failures() -> None:
+    cs = {"hp": 0, "max_hp": 10, "status": "downed", "death_saves": {"success": 1, "failure": 0}}
+    assert record_death_save_failures(cs, 1) == "recorded"
+    assert cs["death_saves"]["failure"] == 1
+    # 非昏迷角色不受影响
+    conscious = {"hp": 5, "max_hp": 10}
+    assert record_death_save_failures(conscious, 1) is None
+
+
+def test_damage_while_downed_critical_counts_double_and_can_kill() -> None:
+    cs = {"hp": 0, "max_hp": 10, "status": "downed", "death_saves": {"success": 0, "failure": 1}}
+    assert record_death_save_failures(cs, 2) == "dead"
+    assert cs["deceased"] is True
+
+
+def _combat_instance_with_downed_target() -> GameInstance:
+    instance = GameInstance(game_key=("web", "ds4", "bot"), rule_id="dnd5e")
+    instance.players["a"] = {
+        "character_name": "袭击者",
+        "character_sheet": {
+            "attributes": {"str": 12},
+            "hp": 10,
+            "max_hp": 10,
+            "equipment": [{"name": "长剑", "type": "weapon", "damage": 7, "damage_dice": "1d8", "slot": "main_hand"}],
+        },
+    }
+    instance.players["b"] = {
+        "character_name": "尤落",
+        "character_sheet": {
+            "attributes": {"dex": 10},
+            "hp": 0,
+            "max_hp": 10,
+            "status": "downed",
+            "death_saves": {"success": 0, "failure": 0},
+        },
+    }
+    return instance
+
+
+def test_combat_hit_on_downed_player_accumulates_failure(monkeypatch) -> None:
+    from src.commands.combat_resolver import CombatResolver
+
+    instance = _combat_instance_with_downed_target()
+    request = {"check_id": "atk1", "actor_uid": "a", "kind": "attack", "opponent": "b", "dice_system": "d20", "attribute": "str", "target": 10}
+    instance.action_queue = [{"user_id": "a", "text": "我补刀尤落。", "check_request": request}]
+    instance.last_checks = [{
+        "check_id": "atk1", "actor_uid": "a", "kind": "attack", "opponent": "b",
+        "dice": "d20", "roll": 18, "total": 19, "verdict": "成功",
+        "is_critical": False, "is_fumble": False,
+    }]
+    monkeypatch.setattr("random.randint", lambda _a, _b: 6)
+
+    CombatResolver().resolve_combat(instance, "ignored", "hp_based", _dnd())
+
+    cs = instance.get_character_sheet("b")
+    assert cs["death_saves"]["failure"] == 1
+    assert not cs.get("deceased")
+
+
+def test_combat_critical_on_downed_player_counts_double(monkeypatch) -> None:
+    from src.commands.combat_resolver import CombatResolver
+
+    instance = _combat_instance_with_downed_target()
+    instance.players["b"]["character_sheet"]["death_saves"]["failure"] = 1
+    request = {"check_id": "atk2", "actor_uid": "a", "kind": "attack", "opponent": "b", "dice_system": "d20", "attribute": "str", "target": 10}
+    instance.action_queue = [{"user_id": "a", "text": "我补刀尤落。", "check_request": request}]
+    instance.last_checks = [{
+        "check_id": "atk2", "actor_uid": "a", "kind": "attack", "opponent": "b",
+        "dice": "d20", "roll": 20, "total": 21, "verdict": "成功",
+        "is_critical": True, "is_fumble": False,
+    }]
+    monkeypatch.setattr("random.randint", lambda _a, _b: 6)
+
+    CombatResolver().resolve_combat(instance, "ignored", "hp_based", _dnd())
+
+    cs = instance.get_character_sheet("b")
+    assert cs["deceased"] is True
