@@ -7,6 +7,7 @@ import logging
 import random
 import struct
 from pathlib import Path
+from typing import Any
 
 from src.rules.rule_system import RuleSystem
 
