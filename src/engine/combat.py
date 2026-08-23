@@ -102,7 +102,7 @@ def calc_hp_based_damage(
     else:
         base = int(weapon_damage) + int(attr_modifier)
         if check_result:
-            if bool(check_result.get("is_critical")) and crit_mode != "none":
+            if bool(check_result.get("is_critical")) and crit_mode == "double_total":
                 base *= 2
             elif degree and str(
                 check_result.get("dice") or check_result.get("dice_system") or ""
@@ -202,11 +202,30 @@ def resolve_attack(
         and mechanic["critical_damage"] == "double_damage_dice"
         and weapon_dice
         and check_result is not None
+        and _check_succeeded(check_result)
     ):
-        # D&D 式暴击：翻倍伤害骰，不翻倍固定修正。
-        dice_total = roll(weapon_dice).natural
-        if bool(check_result.get("is_critical")):
-            dice_total += roll(weapon_dice).natural
+        try:
+            # D&D 式暴击：翻倍伤害骰，不翻倍固定修正。
+            dice_total = roll(weapon_dice).natural
+            if bool(check_result.get("is_critical")):
+                dice_total += roll(weapon_dice).natural
+        except ValueError:
+            logger.warning(
+                "double_damage_dice 规则下武器 damage_dice 非法，使用固定伤害兼容回退: weapon=%s formula=%s",
+                weapon_name,
+                weapon_dice,
+            )
+            dice_total = None
+    elif (
+        mechanic is not None
+        and mechanic["critical_damage"] == "double_damage_dice"
+        and check_result is not None
+        and bool(check_result.get("is_critical"))
+    ):
+        logger.warning(
+            "double_damage_dice 规则下武器缺少合法 damage_dice，暴击使用固定伤害单倍兼容回退: weapon=%s",
+            weapon_name,
+        )
     resolved_target_name = target_name or str(
         target.get("character_name") or target.get("name") or "目标"
     )

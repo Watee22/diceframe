@@ -473,6 +473,9 @@
 
 .create-recommended-rules .rec-card {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  justify-items: stretch;
   gap: 4px;
   align-content: start;
   min-height: 96px;

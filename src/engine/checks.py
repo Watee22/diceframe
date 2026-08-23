@@ -616,7 +616,9 @@ def resolve_check_request(
     skill_value = int(matched_skill.get("value", 0) or 0) if matched_skill else 0
     skill_bonus = 0
     bonus_label = ""
-    if rule and rule.skill_mode == "proficiency" and matched_skill:
+    if rule and rule.skill_mode == "proficiency" and (
+        matched_skill or (common["kind"] == "attack" and rule.attack_proficiency)
+    ):
         skill_bonus = rule.proficiency_bonus(int(character_sheet.get("level", 1) or 1))
         bonus_label = f"熟练加值 +{skill_bonus}"
     elif rule and matched_skill:
@@ -670,6 +672,7 @@ def resolve_check_request(
     common.update({
         "label": common["label"] or f"{skill_name or attribute_label}检定",
         "attribute": attribute_label,
+        "attribute_key": attribute_key,
         "modifier": modifier,
         "modifier_breakdown": "；".join(filter(None, [
             bonus_label,

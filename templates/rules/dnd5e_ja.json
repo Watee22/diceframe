@@ -55,6 +55,7 @@
   "skill_point_total": 0,
   "max_skill_value": 0,
   "skill_mode": "proficiency",
+  "attack_proficiency": true,
   "skill_hint": "D&D のスキルは「習熟・職業能力」に近いものです。得意なスキル名や職業能力名を書けばよく、数値は省略できます。習熟ボーナスは主にレベルで決まります。判定の小ネタ：有利＝2d20で高い方を採用、不利＝2d20で低い方を採用。両方ある場合は打ち消し合います。",
   "currency": "金貨",
   "item_categories": {

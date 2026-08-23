@@ -53,6 +53,7 @@
   "skill_point_total": 0,
   "max_skill_value": 0,
   "skill_mode": "proficiency",
+  "attack_proficiency": true,
   "skill_hint": "D&D 技能更接近“熟练项/职业能力”。可以写擅长的技能或职业能力名，数值可省略；熟练加值主要由等级决定。检定小抄：优势=2d20取高，劣势=2d20取低；同时出现会抵消。",
   "currency": "金币",
   "item_categories": {

@@ -154,7 +154,8 @@ def armor_ac_components(character_sheet: dict) -> dict[str, Any]:
     for item in equipment:
         if not isinstance(item, dict):
             continue
-        spec = ARMOR_LITE.get(str(item.get("name") or "").strip().casefold())
+        key = str(item.get("item_key") or item.get("name") or "").strip().casefold()
+        spec = ARMOR_LITE.get(key)
         if not spec:
             continue
         if spec.get("category") == "shield":
@@ -283,7 +284,7 @@ def sync_death_from_hp(character_sheet: dict, round_number: int | None = None, r
         and rule.death_mechanic["hp_zero"] == "downed_death_saves"
         and not character_sheet.get("deceased")
     ):
-        if str(character_sheet.get("status") or "") != "downed":
+        if str(character_sheet.get("status") or "") not in {"downed", "stable"}:
             enter_downed_state(character_sheet)
         return False
     return mark_character_dead(character_sheet, round_number)
@@ -313,8 +314,14 @@ def record_death_save_failures(
     character_sheet: dict, count: int, round_number: int | None = None
 ) -> str | None:
     """昏迷角色受击累加失败（5e：任何伤害 1 次、暴击 2 次）；满 3 次死亡返回 'dead'。"""
-    if str(character_sheet.get("status") or "") != "downed" or int(count) <= 0:
+    if str(character_sheet.get("status") or "") not in {"downed", "stable"} or int(count) <= 0:
         return None
+    # A stable character is still at 0 HP. Taking damage cancels stability
+    # before applying the new failure count, without resetting old failures.
+    if str(character_sheet.get("status") or "") == "stable":
+        character_sheet["status"] = "downed"
+        if not isinstance(character_sheet.get("death_saves"), dict):
+            character_sheet["death_saves"] = {"success": 0, "failure": 0}
     saves = character_sheet.get("death_saves")
     if not isinstance(saves, dict):
         saves = {"success": 0, "failure": 0}
@@ -363,6 +370,9 @@ def apply_death_save(character_sheet: dict, roll_value: int, round_number: int |
         return "dead"
     if int(saves.get("success", 0) or 0) >= 3:
         character_sheet["status"] = "stable"
+        # Stable is a terminal state for automatic saves; do not leave three
+        # active successes that can be mistaken for an in-progress tracker.
+        character_sheet.pop("death_saves", None)
         return "stable"
     return event
 
@@ -551,28 +561,78 @@ def build_starter_items(rule, class_name: str) -> tuple[list[dict], list[dict]]:
     starter = cls.get("starter_equipment", [])
     if not starter:
         return [], []
-    from src.engine.constants import WEAPON_DAMAGE, WEAPON_DAMAGE_DICE
+    from src.engine.constants import (
+        ARMOR_LITE,
+        WEAPON_DAMAGE,
+        WEAPON_DAMAGE_DICE,
+        canonical_item_key,
+    )
     equip: list[dict] = []
     inv: list[dict] = []
+    category_lite = getattr(rule, "armor_model", "sum") == "category_lite"
+    equipped_weapons = 0
+
+    def make_item(iname: str, slot: str = "") -> dict | None:
+        display_key = str(iname).strip().casefold()
+        item_key = canonical_item_key(iname)
+        key = item_key or display_key
+        armor = ARMOR_LITE.get(key)
+        if category_lite and armor:
+            if armor.get("category") == "shield":
+                return {
+                    "name": iname, "type": "shield", "slot": slot or "off_hand", "quality": "common",
+                    **({"item_key": item_key} if item_key else {}),
+                }
+            return {
+                "name": iname,
+                "type": "armor",
+                "slot": slot or "armor",
+                "armor": int(armor.get("ac_base", 0)),
+                "quality": "common",
+                **({"item_key": item_key} if item_key else {}),
+            }
+        damage = WEAPON_DAMAGE.get(key, WEAPON_DAMAGE.get(display_key, 0))
+        damage_dice = WEAPON_DAMAGE_DICE.get(key, WEAPON_DAMAGE_DICE.get(display_key, ""))
+        if damage_dice or damage:
+            return {
+                "name": iname,
+                "type": "weapon",
+                "damage": int(damage or 0),
+                "slot": slot or ("main_hand" if equipped_weapons == 0 else "off_hand"),
+                "quality": "common",
+                **({"item_key": item_key} if item_key else {}),
+                **({"damage_dice": damage_dice} if damage_dice else {}),
+            }
+        return None
+
     for st_item in starter:
         if isinstance(st_item, dict):
             iname = st_item.get("name", "")
             islot = st_item.get("slot", "")
             if islot:
-                item = {"name": iname, "type": "weapon", "damage": WEAPON_DAMAGE.get(iname, 0), "slot": islot, "quality": "common"}
-                if WEAPON_DAMAGE_DICE.get(str(iname).strip().casefold()):
-                    item["damage_dice"] = WEAPON_DAMAGE_DICE[str(iname).strip().casefold()]
-                equip.append(item)
+                item = make_item(str(iname), str(islot))
+                if item:
+                    equip.append(item)
+                    equipped_weapons += int(item.get("type") == "weapon")
+                else:
+                    inv.append({"name": iname, "qty": 1, "effect": ""})
             else:
                 inv.append({"name": iname, "qty": 1, "effect": ""})
         else:
             iname = str(st_item)
             cat = find_item_category(rule.item_categories, iname)
-            if cat == "equipment" and iname in WEAPON_DAMAGE and not equip:
-                item = {"name": iname, "type": "weapon", "damage": WEAPON_DAMAGE[iname], "slot": "main_hand", "quality": "common"}
-                if WEAPON_DAMAGE_DICE.get(iname.strip().casefold()):
-                    item["damage_dice"] = WEAPON_DAMAGE_DICE[iname.strip().casefold()]
+            item = make_item(iname)
+            known_rule_item = item is not None and category_lite
+            legacy_weapon = (
+                item is not None
+                and item.get("type") == "weapon"
+                and cat == "equipment"
+                and equipped_weapons == 0
+            )
+            if known_rule_item or legacy_weapon:
+                assert item is not None
                 equip.append(item)
+                equipped_weapons += int(item.get("type") == "weapon")
             else:
                 inv.append({"name": iname, "qty": 1, "effect": ""})
     return equip, inv

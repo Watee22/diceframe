@@ -54,6 +54,7 @@
   "skill_point_total": 0,
   "max_skill_value": 0,
   "skill_mode": "proficiency",
+  "attack_proficiency": true,
   "skill_hint": "D&D skills are closer to \"proficiencies\" or class abilities. You may write favored skills or class ability names, values optional; proficiency bonus is mostly determined by level. Roll cheat sheet: advantage = roll 2d20 take higher, disadvantage = take lower; if both apply, they cancel out.",
   "currency": "Gold Pieces",
   "item_categories": {

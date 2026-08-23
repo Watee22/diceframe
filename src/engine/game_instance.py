@@ -197,6 +197,9 @@ class GameInstance:
     round_checks_prepared: bool = False
     # 进入判定阶段前的玩家状态；整轮撤回时用于退还本轮消耗的幸运。
     round_start_snapshot: dict = field(default_factory=dict)
+    # Death-save outcomes are keyed by round and player UID so narrative/API
+    # retries reuse the same roll without leaking it into future rounds.
+    death_save_outcomes: dict[str, dict[str, dict]] = field(default_factory=dict)
 
     # GM 私密指令：只注入 GM 上下文，不作为玩家/系统行动公开记录
     gm_directives: list[dict] = field(default_factory=list)
@@ -584,6 +587,9 @@ class GameInstance:
             self.ready_players.clear()
             self.pending_payments.clear()
             self.reset_round_checks()
+            # Explicit rollback starts a fresh attempt for that round; do not
+            # let a discarded outcome affect the replay or a later round.
+            self.death_save_outcomes.clear()
             self.round_start_snapshot.clear()
             self.state = GameState.ACTIVE_ACTION
             self.last_activity = datetime.now(timezone.utc).isoformat()
@@ -716,6 +722,10 @@ class GameInstance:
         """开启新一轮行动阶段。"""
         async with self._lock:
             self.round_number += 1
+            current = str(self.round_number)
+            self.death_save_outcomes = {
+                current: self.death_save_outcomes.get(current, {})
+            }
             self.state = GameState.ACTIVE_ACTION
             self.round_checks_prepared = False
             self.round_start_snapshot.clear()
@@ -1101,6 +1111,7 @@ class GameInstance:
             "last_overreach": self.last_overreach,
             "round_checks_prepared": self.round_checks_prepared,
             "round_start_snapshot": self.round_start_snapshot,
+            "death_save_outcomes": self.death_save_outcomes,
             "last_state_update": self.last_state_update,
             "last_token_budget_bump": self.last_token_budget_bump,
             "gm_directives": self.gm_directives,
@@ -1198,6 +1209,8 @@ class GameInstance:
 
     @classmethod
     def from_dict(cls, data: dict) -> "GameInstance":
+        raw_death_save_outcomes = data.get("death_save_outcomes")
+        death_save_outcomes = raw_death_save_outcomes if isinstance(raw_death_save_outcomes, dict) else {}
         inst = cls(
             game_key=tuple(data["game_key"]),
             world_id=data.get("world_id"),
@@ -1251,6 +1264,7 @@ class GameInstance:
             last_overreach=data.get("last_overreach") or [],
             round_checks_prepared=bool(data.get("round_checks_prepared", False)),
             round_start_snapshot=data.get("round_start_snapshot") or {},
+            death_save_outcomes=death_save_outcomes,
             last_state_update=data.get("last_state_update"),
             last_token_budget_bump=data.get("last_token_budget_bump"),
             gm_directives=data.get("gm_directives", []),

@@ -497,6 +497,11 @@ class RuleSystem:
         return self.template.get("skill_mode", "narrative")
 
     @property
+    def attack_proficiency(self) -> bool:
+        """规则是否把普通武器攻击视为熟练攻击。"""
+        return bool(self.template.get("attack_proficiency", False))
+
+    @property
     def skill_hint(self) -> str:
         """建卡技能填写说明，用于 WebUI 提示玩家当前规则的技能语义。"""
         return self.template.get("skill_hint", "")

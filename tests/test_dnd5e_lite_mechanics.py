@@ -9,10 +9,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from src.commands.combat_resolver import CombatResolver
 from src.engine.character_utils import build_starter_items
-from src.engine.checks import _attack_target_dc
+from src.engine.checks import _attack_target_dc, resolve_check_request
 from src.engine.combat import calc_hp_based_damage, resolve_attack
 from src.engine.dice import d20_dc_cap
+from src.engine.game_instance import GameInstance
 from src.rules.rule_system import RuleSystem
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,10 +123,10 @@ def test_category_lite_ac_by_armor_category() -> None:
     )
     assert light == 11 + 4 + 2
 
-    medium = _attack_target_dc(
+    chain_mail = _attack_target_dc(
         dnd, {"attributes": dex18, "equipment": [{"name": "链甲"}, {"name": "盾牌"}]}
     )
-    assert medium == 13 + 2 + 2  # DEX 封顶 +2
+    assert chain_mail == 16 + 2  # Chain Mail is heavy armor; DEX is ignored
 
     heavy = _attack_target_dc(dnd, {"attributes": dex18, "equipment": [{"name": "板甲"}]})
     assert heavy == 18  # 重甲不吃 DEX
@@ -158,3 +162,155 @@ def test_starter_items_carry_damage_dice_for_known_weapons() -> None:
     equip, _inv = build_starter_items(dnd, "战士")
     sword = next(item for item in equip if item["name"] == "长剑")
     assert sword["damage_dice"] == "1d8"
+
+
+@pytest.mark.parametrize(
+    ("rule_file", "class_name", "weapon_name", "shield_name", "armor_name"),
+    [
+        ("dnd5e.json", "战士", "长剑", "盾牌", "链甲"),
+        ("dnd5e_en.json", "Fighter", "Longsword", "Shield", "Chain Mail"),
+        ("dnd5e_ja.json", "ファイター", "ロングソード", "盾", "チェインメイル"),
+    ],
+)
+def test_dnd_fighter_starter_equipment_is_equipped_in_all_languages(
+    rule_file: str,
+    class_name: str,
+    weapon_name: str,
+    shield_name: str,
+    armor_name: str,
+) -> None:
+    rule = _rule(rule_file)
+    equipment, inventory = build_starter_items(rule, class_name)
+
+    assert not inventory
+    assert next(item for item in equipment if item["name"] == weapon_name)["slot"] == "main_hand"
+    assert next(item for item in equipment if item["name"] == shield_name)["slot"] == "off_hand"
+    assert next(item for item in equipment if item["name"] == armor_name)["slot"] == "armor"
+    assert _attack_target_dc(rule, {"attributes": {"dex": 18}, "equipment": equipment}) == 18
+    assert next(item for item in equipment if item["name"] == weapon_name)["item_key"] == "longsword"
+    assert next(item for item in equipment if item["name"] == armor_name)["item_key"] == "chain_mail"
+
+
+def _combat_instance(*, weapon: dict, attributes: dict[str, int], check: dict) -> GameInstance:
+    instance = GameInstance(game_key=("test", "dnd-combat", "bot"), rule_id="dnd5e")
+    instance.players["fighter"] = {
+        "character_name": "Fighter",
+        "character_sheet": {
+            "attributes": attributes,
+            "equipment": [weapon],
+            "hp": 20,
+            "max_hp": 20,
+        },
+    }
+    instance.npcs["target"] = {"name": "Target", "hp": 50, "max_hp": 50, "attributes": {"dex": 10}}
+    request = {
+        "check_id": check["check_id"],
+        "actor_uid": "fighter",
+        "kind": "attack",
+        "opponent": "npc:target",
+        "attribute": check.get("attribute_key", "str"),
+    }
+    instance.action_queue = [{"user_id": "fighter", "text": "I attack Target.", "check_request": request}]
+    instance.last_checks = [check]
+    return instance
+
+
+def test_combat_resolver_preserves_equipped_damage_dice(monkeypatch) -> None:
+    rule = _rule("dnd5e.json")
+    check = {
+        "check_id": "real-damage-die", "actor_uid": "fighter", "kind": "attack",
+        "opponent": "npc:target", "attribute_key": "str", "verdict": "成功",
+        "dice": "d20", "roll": 16, "total": 19, "is_critical": False, "is_fumble": False,
+    }
+    instance = _combat_instance(
+        weapon={"name": "长剑", "damage": 7, "damage_dice": "1d8", "slot": "main_hand"},
+        attributes={"str": 16},
+        check=check,
+    )
+    monkeypatch.setattr("random.randint", lambda _a, _b: 5)
+
+    CombatResolver().resolve_combat(instance, "", "hp_based", rule)
+
+    assert instance.npcs["target"]["hp"] == 42  # 1d8(5) + STR(3), not fixed 7
+
+
+def test_combat_resolver_critical_doubles_only_equipped_damage_dice(monkeypatch) -> None:
+    rule = _rule("dnd5e.json")
+    check = {
+        "check_id": "real-critical-die", "actor_uid": "fighter", "kind": "attack",
+        "opponent": "npc:target", "attribute_key": "str", "verdict": "成功",
+        "dice": "d20", "roll": 20, "total": 23, "is_critical": True, "is_fumble": False,
+    }
+    instance = _combat_instance(
+        weapon={"name": "长剑", "damage": 7, "damage_dice": "1d8", "slot": "main_hand"},
+        attributes={"str": 16},
+        check=check,
+    )
+    rolls = iter([5, 7])
+    monkeypatch.setattr("random.randint", lambda _a, _b: next(rolls))
+
+    CombatResolver().resolve_combat(instance, "", "hp_based", rule)
+
+    assert instance.npcs["target"]["hp"] == 35  # 2d8(12) + STR(3)
+
+
+def test_dnd_critical_without_damage_dice_keeps_fixed_damage_single() -> None:
+    dnd = _rule("dnd5e.json")
+    target = {"hp": 50, "max_hp": 50}
+    result = resolve_attack(
+        "Fighter", target, {"name": "legacy sword", "damage": 7}, attr_value=12,
+        check_result={"check_id": "legacy-critical", "verdict": "成功", "is_critical": True}, rule=dnd,
+    )
+    assert result.actual_damage == 8
+
+
+def test_dnd_invalid_damage_dice_uses_fixed_compatibility_fallback() -> None:
+    dnd = _rule("dnd5e.json")
+    result = resolve_attack(
+        "Fighter", {"hp": 50, "max_hp": 50},
+        {"name": "legacy sword", "damage": 7, "damage_dice": "not-a-die"}, attr_value=12,
+        check_result={"check_id": "invalid-die", "verdict": "成功", "is_critical": True}, rule=dnd,
+    )
+    assert result.actual_damage == 8
+
+
+def test_combat_resolver_uses_attack_check_attribute_for_damage(monkeypatch) -> None:
+    rule = _rule("dnd5e.json")
+    check = {
+        "check_id": "longbow-dex", "actor_uid": "fighter", "kind": "attack",
+        "opponent": "npc:target", "attribute_key": "dex", "verdict": "成功",
+        "dice": "d20", "roll": 15, "total": 18, "is_critical": False, "is_fumble": False,
+    }
+    instance = _combat_instance(
+        weapon={"name": "Longbow", "damage": 6, "damage_dice": "1d8", "slot": "main_hand"},
+        attributes={"str": 8, "dex": 16},
+        check=check,
+    )
+    monkeypatch.setattr("random.randint", lambda _a, _b: 4)
+
+    CombatResolver().resolve_combat(instance, "", "hp_based", rule)
+
+    assert instance.npcs["target"]["hp"] == 43  # 1d8(4) + DEX(3), never STR(-1)
+
+
+def test_dnd_weapon_attack_gets_proficiency_without_a_skill() -> None:
+    dnd = _rule("dnd5e.json")
+    instance = GameInstance(game_key=("test", "dnd-proficiency", "bot"), rule_id="dnd5e")
+    instance.players["fighter"] = {
+        "character_name": "Fighter",
+        "character_sheet": {"attributes": {"str": 14}, "skills": [], "level": 1},
+    }
+    instance.npcs["target"] = {"name": "Target", "hp": 10, "max_hp": 10, "attributes": {"dex": 10}}
+    request = {
+        "check_id": "attack-proficiency", "actor_uid": "fighter", "kind": "attack",
+        "opponent": "npc:target", "dice_system": "d20", "attribute": "str", "target": 10,
+    }
+    result = resolve_check_request(
+        instance,
+        {"user_id": "fighter", "text": "I attack Target.", "check_request": request, "dice_value": 10},
+        dnd,
+    )
+
+    assert result is not None
+    assert result["modifier"] == 4  # STR +2 and level-1 proficiency +2
+    assert result["attribute_key"] == "str"

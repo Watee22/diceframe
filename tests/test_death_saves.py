@@ -65,6 +65,7 @@ def test_death_save_three_successes_stabilize() -> None:
     assert apply_death_save(cs, 12) == "success"
     assert apply_death_save(cs, 10) == "stable"
     assert cs["status"] == "stable"
+    assert "death_saves" not in cs
     assert not cs.get("deceased")
     assert not is_conscious(cs)  # 稳定仍昏迷，不能行动
 
@@ -112,6 +113,61 @@ def test_round_tracker_skips_when_rule_lacks_mechanic() -> None:
     instance = GameInstance(game_key=("web", "ds2", "bot"), rule_id="freeform_coc")
     instance.players["a"] = {"character_name": "调查员", "character_sheet": {"hp": 0, "max_hp": 10}}
     assert resolve_round_death_saves(instance, _coc()) == ""
+
+
+def test_stable_character_stays_stable_until_healed_or_hurt() -> None:
+    cs = {"hp": 0, "max_hp": 10, "status": "stable"}
+    assert sync_death_from_hp(cs, 2, _dnd()) is False
+    assert cs["status"] == "stable"
+    assert "death_saves" not in cs
+
+
+def test_damage_to_stable_character_restarts_downed_and_records_failure() -> None:
+    cs = {"hp": 0, "max_hp": 10, "status": "stable"}
+    assert record_death_save_failures(cs, 1) == "recorded"
+    assert cs["status"] == "downed"
+    assert cs["death_saves"] == {"success": 0, "failure": 1}
+
+
+def test_round_tracker_reuses_same_round_outcome_without_reroll(monkeypatch) -> None:
+    instance = GameInstance(game_key=("web", "ds-retry", "bot"), rule_id="dnd5e", round_number=4)
+    instance.players["a"] = {
+        "character_name": "尤落",
+        "character_sheet": {"hp": 0, "max_hp": 10, "status": "downed", "death_saves": {"success": 0, "failure": 0}},
+    }
+    calls = 0
+
+    def fixed_roll(_a: int, _b: int) -> int:
+        nonlocal calls
+        calls += 1
+        return 17
+
+    monkeypatch.setattr("random.randint", fixed_roll)
+    first = resolve_round_death_saves(instance, _dnd())
+    second = resolve_round_death_saves(instance, _dnd())
+
+    assert calls == 1
+    assert first == second
+    assert instance.get_character_sheet("a")["death_saves"] == {"success": 1, "failure": 0}
+
+
+def test_round_tracker_caches_each_downed_player_independently(monkeypatch) -> None:
+    instance = GameInstance(game_key=("web", "ds-party", "bot"), rule_id="dnd5e", round_number=4)
+    for uid in ("a", "b"):
+        instance.players[uid] = {
+            "character_name": uid,
+            "character_sheet": {"hp": 0, "max_hp": 10, "status": "downed", "death_saves": {"success": 0, "failure": 0}},
+        }
+    rolls = iter([12, 3])
+    monkeypatch.setattr("random.randint", lambda _a, _b: next(rolls))
+
+    resolve_round_death_saves(instance, _dnd())
+
+    outcomes = instance.death_save_outcomes["4"]
+    assert outcomes["a"]["roll"] == 12
+    assert outcomes["b"]["roll"] == 3
+    assert instance.get_character_sheet("a")["death_saves"] == {"success": 1, "failure": 0}
+    assert instance.get_character_sheet("b")["death_saves"] == {"success": 0, "failure": 1}
 
 
 def test_planner_context_excludes_downed_players() -> None:

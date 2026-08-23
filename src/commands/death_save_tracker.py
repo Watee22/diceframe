@@ -17,13 +17,54 @@ def resolve_round_death_saves(instance: GameInstance, rule) -> str:
     if rule is None or rule.death_mechanic["hp_zero"] != "downed_death_saves":
         return ""
     lines: list[str] = []
+    round_key = str(instance.round_number)
+    round_cache = instance.death_save_outcomes.setdefault(round_key, {})
     for uid, player in list(instance.players.items()):
         cs = instance.get_character_sheet(uid)
-        if cs.get("deceased") or str(cs.get("status") or "") != "downed":
+        cached = round_cache.get(uid)
+        if isinstance(cached, dict) and "roll" in cached:
+            value = int(cached.get("roll", 0) or 0)
+            event = str(cached.get("event") or "")
+            before_status = cached.get("before_status")
+            before_saves = cached.get("before_death_saves")
+            current_saves = cs.get("death_saves") if isinstance(cs.get("death_saves"), dict) else None
+            if (
+                "before_status" in cached
+                and str(cs.get("status") or "") == str(before_status or "")
+                and current_saves == before_saves
+            ):
+                after_status = cached.get("status")
+                if after_status:
+                    cs["status"] = after_status
+                else:
+                    cs.pop("status", None)
+                after_saves = cached.get("death_saves")
+                if isinstance(after_saves, dict):
+                    cs["death_saves"] = dict(after_saves)
+                else:
+                    cs.pop("death_saves", None)
+                cs["deceased"] = bool(cached.get("deceased"))
+                if "hp" in cached:
+                    cs["hp"] = int(cached.get("hp", 0) or 0)
+            instance.set_character_sheet(uid, cs)
+        elif cs.get("deceased") or str(cs.get("status") or "") != "downed":
             continue
-        value = roll("d20").natural
-        event = apply_death_save(cs, value, instance.round_number)
-        instance.set_character_sheet(uid, cs)
+        else:
+            before_saves = cs.get("death_saves") if isinstance(cs.get("death_saves"), dict) else None
+            before_status = cs.get("status")
+            value = roll("d20").natural
+            event = apply_death_save(cs, value, instance.round_number)
+            round_cache[uid] = {
+                "roll": value,
+                "event": event,
+                "before_status": before_status,
+                "before_death_saves": dict(before_saves) if isinstance(before_saves, dict) else None,
+                "status": cs.get("status"),
+                "death_saves": dict(cs.get("death_saves")) if isinstance(cs.get("death_saves"), dict) else None,
+                "deceased": bool(cs.get("deceased")),
+                "hp": int(cs.get("hp", 0) or 0),
+            }
+            instance.set_character_sheet(uid, cs)
         name = str(player.get("character_name") or uid)
         label = localized_text(instance.language, {
             "zh-CN": "死亡豁免", "en": "death save", "ja": "死亡セーヴ",

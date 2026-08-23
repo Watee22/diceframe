@@ -33,6 +33,14 @@ WEAPON_DAMAGE: dict[str, int] = {
     "皮甲": 2, "链甲": 4, "板甲": 6, "盾牌": 2,
     "左轮手枪": 8, "手枪": 7, "霰弹枪": 12, "猎枪": 10,
     "冲锋枪": 9, "步枪": 10, "手电筒": 1, "军刀": 5,
+    # D&D 模板的英文/日文显示名；规则身份仍由装备数据字段承载。
+    "dagger": 4, "短剣": 4, "shortsword": 5, "ショートソード": 5,
+    "longsword": 7, "ロングソード": 7, "scimitar": 7, "シミター": 7,
+    "rapier": 5, "レイピア": 5, "greatsword": 10, "greataxe": 11,
+    "大斧": 11, "mace": 7, "メイス": 7, "warhammer": 8, "ウォーハンマー": 8,
+    "quarterstaff": 3, "クォータースタッフ": 3, "staff": 3, "杖": 3,
+    "spear": 7, "槍": 7, "longbow": 6, "ロングボウ": 6,
+    "shortbow": 5, "ショートボウ": 5, "crossbow": 7, "クロスボウ": 7,
 }
 
 # 武器伤害骰（多语言名称，casefold 后查表）。
@@ -64,12 +72,14 @@ WEAPON_DAMAGE_DICE: dict[str, str] = {
 # heavy: 固定 AC 不吃 DEX；shield: 额外加值。
 # 未列出的护甲回退旧版累加逻辑，不影响其他规则。
 ARMOR_LITE: dict[str, dict] = {
+    "leather_armor": {"category": "light", "ac_base": 11, "dex_cap": None},
     "皮甲": {"category": "light", "ac_base": 11, "dex_cap": None},
     "leather armor": {"category": "light", "ac_base": 11, "dex_cap": None},
     "革鎧": {"category": "light", "ac_base": 11, "dex_cap": None},
-    "链甲": {"category": "medium", "ac_base": 13, "dex_cap": 2},
-    "chain mail": {"category": "medium", "ac_base": 13, "dex_cap": 2},
-    "チェインメイル": {"category": "medium", "ac_base": 13, "dex_cap": 2},
+    "chain_mail": {"category": "heavy", "ac_base": 16, "dex_cap": 0},
+    "链甲": {"category": "heavy", "ac_base": 16, "dex_cap": 0},
+    "chain mail": {"category": "heavy", "ac_base": 16, "dex_cap": 0},
+    "チェインメイル": {"category": "heavy", "ac_base": 16, "dex_cap": 0},
     "鳞甲": {"category": "medium", "ac_base": 14, "dex_cap": 2},
     "scale mail": {"category": "medium", "ac_base": 14, "dex_cap": 2},
     "スケイルメイル": {"category": "medium", "ac_base": 14, "dex_cap": 2},
@@ -81,8 +91,36 @@ ARMOR_LITE: dict[str, dict] = {
     "プレートアーマー": {"category": "heavy", "ac_base": 18, "dex_cap": 0},
     "盾牌": {"category": "shield", "ac_bonus": 2},
     "盾": {"category": "shield", "ac_bonus": 2},
+    "wooden_shield": {"category": "shield", "ac_bonus": 2},
     "木盾": {"category": "shield", "ac_bonus": 2},
     "shield": {"category": "shield", "ac_bonus": 2},
     "wooden shield": {"category": "shield", "ac_bonus": 2},
     "木の盾": {"category": "shield", "ac_bonus": 2},
 }
+
+# Rules consume canonical item keys; localized names remain display data and
+# are normalized at creation/fallback boundaries for compatibility with saves.
+ITEM_KEY_ALIASES: dict[str, str] = {
+    "匕首": "dagger", "dagger": "dagger", "短剣": "dagger",
+    "短剑": "shortsword", "shortsword": "shortsword", "ショートソード": "shortsword",
+    "长剑": "longsword", "longsword": "longsword", "ロングソード": "longsword",
+    "弯刀": "scimitar", "scimitar": "scimitar", "シミター": "scimitar",
+    "细剑": "rapier", "rapier": "rapier", "レイピア": "rapier",
+    "巨剑": "greatsword", "greatsword": "greatsword",
+    "巨斧": "greataxe", "大斧": "greataxe", "greataxe": "greataxe",
+    "钉头锤": "mace", "mace": "mace", "メイス": "mace",
+    "战锤": "warhammer", "warhammer": "warhammer", "ウォーハンマー": "warhammer",
+    "短棍": "quarterstaff", "quarterstaff": "quarterstaff", "クォータースタッフ": "quarterstaff",
+    "法杖": "staff", "staff": "staff", "杖": "staff",
+    "长弓": "longbow", "longbow": "longbow", "ロングボウ": "longbow",
+    "短弓": "shortbow", "shortbow": "shortbow", "ショートボウ": "shortbow",
+    "皮甲": "leather_armor", "leather armor": "leather_armor", "革鎧": "leather_armor",
+    "链甲": "chain_mail", "chain mail": "chain_mail", "チェインメイル": "chain_mail",
+    "盾牌": "shield", "盾": "shield", "shield": "shield",
+    "木盾": "wooden_shield", "wooden shield": "wooden_shield", "木の盾": "wooden_shield",
+}
+
+
+def canonical_item_key(name: object) -> str:
+    """Return a stable key for known starter/combat items, else an empty key."""
+    return ITEM_KEY_ALIASES.get(str(name or "").strip().casefold(), "")
