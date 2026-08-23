@@ -114,6 +114,7 @@ def test_dnd5e_non_critical_rolls_single_damage_die(monkeypatch) -> None:
 def test_category_lite_ac_by_armor_category() -> None:
     dnd = _rule("dnd5e.json")
     dex18 = {"dex": 18}  # 修正 +4
+    dex8 = {"dex": 8}  # 修正 -1
 
     unarmored = _attack_target_dc(dnd, {"attributes": dex18, "equipment": []})
     assert unarmored == 14  # 10 + 4
@@ -130,6 +131,13 @@ def test_category_lite_ac_by_armor_category() -> None:
 
     heavy = _attack_target_dc(dnd, {"attributes": dex18, "equipment": [{"name": "板甲"}]})
     assert heavy == 18  # 重甲不吃 DEX
+
+    assert _attack_target_dc(dnd, {"attributes": dex8, "equipment": []}) == 9
+    assert _attack_target_dc(dnd, {"attributes": dex8, "equipment": [{"name": "皮甲"}]}) == 10
+    assert _attack_target_dc(dnd, {"attributes": dex8, "equipment": [{"name": "链甲"}]}) == 16
+    assert _attack_target_dc(
+        dnd, {"attributes": dex8, "equipment": [{"name": "链甲"}, {"name": "盾牌"}]}
+    ) == 18
 
 
 def test_legacy_rules_keep_sum_armor_ac(tmp_path) -> None:
@@ -189,6 +197,28 @@ def test_dnd_fighter_starter_equipment_is_equipped_in_all_languages(
     assert _attack_target_dc(rule, {"attributes": {"dex": 18}, "equipment": equipment}) == 18
     assert next(item for item in equipment if item["name"] == weapon_name)["item_key"] == "longsword"
     assert next(item for item in equipment if item["name"] == armor_name)["item_key"] == "chain_mail"
+
+
+@pytest.mark.parametrize(
+    ("rule_file", "class_name", "focus_name"),
+    [
+        ("dnd5e.json", "术士", "法器"),
+        ("dnd5e_en.json", "Sorcerer", "Arcane Focus"),
+        ("dnd5e_ja.json", "ソーサラー", "秘術焦点"),
+    ],
+)
+def test_dnd_sorcerer_dict_starter_focus_is_canonical_and_nonweapon(
+    rule_file: str, class_name: str, focus_name: str
+) -> None:
+    equipment, inventory = build_starter_items(_rule(rule_file), class_name)
+    names = [str(item.get("name")) for item in equipment + inventory]
+
+    assert names.count(focus_name) == 1
+    assert "name" not in names and "description" not in names
+    focus = next(item for item in equipment if item["name"] == focus_name)
+    assert focus["item_key"] == "arcane_focus"
+    assert focus["type"] != "weapon"
+    assert "damage_dice" not in focus
 
 
 def _combat_instance(*, weapon: dict, attributes: dict[str, int], check: dict) -> GameInstance:
@@ -291,6 +321,23 @@ def test_combat_resolver_uses_attack_check_attribute_for_damage(monkeypatch) -> 
     CombatResolver().resolve_combat(instance, "", "hp_based", rule)
 
     assert instance.npcs["target"]["hp"] == 43  # 1d8(4) + DEX(3), never STR(-1)
+
+
+def test_combat_weapon_selection_uses_only_server_equipment() -> None:
+    resolver = CombatResolver()
+    no_weapon, no_weapon_name = resolver._weapon({"equipment": []}, "我用巨剑攻击")
+    assert no_weapon is None and no_weapon_name == "徒手"
+
+    sheet = {
+        "equipment": [
+            {"name": "Longsword", "type": "weapon", "slot": "main_hand", "damage": 7},
+            {"name": "Longbow", "type": "weapon", "damage": 6},
+        ]
+    }
+    selected, name = resolver._weapon(sheet, "I shoot with my Longbow")
+    assert selected is not None and name == "Longbow"
+    selected, name = resolver._weapon(sheet, "I attack.")
+    assert selected is not None and name == "Longsword"
 
 
 def test_dnd_weapon_attack_gets_proficiency_without_a_skill() -> None:

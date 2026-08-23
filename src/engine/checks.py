@@ -492,7 +492,11 @@ def _attack_target_dc(rule: RuleSystem | None, target: dict[str, Any]) -> int | 
         if components["base"]:
             armor_base = int(components["base"])
             cap = components["dex_cap"]
-            dex_part = dex_mod if cap is None else min(dex_mod, int(cap))
+            # ``dex_cap=0`` denotes heavy armor, whose DEX contribution is
+            # exactly zero rather than a cap that still permits penalties.
+            dex_part = 0 if components.get("category") == "heavy" else (
+                dex_mod if cap is None else min(dex_mod, int(cap))
+            )
             total = armor_base + dex_part + int(components["shield"])
         else:
             # 无已知类别护甲（NPC/敌人直接暴露 armor 数值等可信状态）：回退旧版累加。

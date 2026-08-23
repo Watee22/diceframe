@@ -147,10 +147,11 @@ def armor_ac_components(character_sheet: dict) -> dict[str, Any]:
 
     base = 0
     dex_cap: int | None = None
+    category = ""
     shield = 0
     equipment = character_sheet.get("equipment")
     if not isinstance(equipment, list):
-        return {"base": base, "dex_cap": dex_cap, "shield": shield}
+        return {"base": base, "dex_cap": dex_cap, "shield": shield, "category": category}
     for item in equipment:
         if not isinstance(item, dict):
             continue
@@ -165,7 +166,8 @@ def armor_ac_components(character_sheet: dict) -> dict[str, Any]:
         if item_base > base:
             base = item_base
             dex_cap = spec.get("dex_cap")
-    return {"base": base, "dex_cap": dex_cap, "shield": shield}
+            category = str(spec.get("category") or "")
+    return {"base": base, "dex_cap": dex_cap, "shield": shield, "category": category}
 
 
 def armor_value(character_sheet: dict) -> int:
@@ -316,12 +318,11 @@ def record_death_save_failures(
     """昏迷角色受击累加失败（5e：任何伤害 1 次、暴击 2 次）；满 3 次死亡返回 'dead'。"""
     if str(character_sheet.get("status") or "") not in {"downed", "stable"} or int(count) <= 0:
         return None
-    # A stable character is still at 0 HP. Taking damage cancels stability
-    # before applying the new failure count, without resetting old failures.
+    # A stable character is still at 0 HP. Old saves may retain a stale
+    # death_saves object, so renewed damage always starts a fresh tracker.
     if str(character_sheet.get("status") or "") == "stable":
         character_sheet["status"] = "downed"
-        if not isinstance(character_sheet.get("death_saves"), dict):
-            character_sheet["death_saves"] = {"success": 0, "failure": 0}
+        character_sheet["death_saves"] = {"success": 0, "failure": 0}
     saves = character_sheet.get("death_saves")
     if not isinstance(saves, dict):
         saves = {"success": 0, "failure": 0}
@@ -559,6 +560,12 @@ def build_starter_items(rule, class_name: str) -> tuple[list[dict], list[dict]]:
         return [], []
     cls = next((c for c in rule.classes if c.get("name") == class_name), rule.classes[0])
     starter = cls.get("starter_equipment", [])
+    # Historical templates and third-party rules may use a single item object.
+    # Normalize at this boundary so the normal item construction path handles it.
+    if isinstance(starter, dict):
+        starter = [starter]
+    elif not isinstance(starter, list):
+        starter = []
     if not starter:
         return [], []
     from src.engine.constants import (
@@ -576,6 +583,14 @@ def build_starter_items(rule, class_name: str) -> tuple[list[dict], list[dict]]:
         display_key = str(iname).strip().casefold()
         item_key = canonical_item_key(iname)
         key = item_key or display_key
+        if key == "arcane_focus":
+            return {
+                "name": iname,
+                "type": "focus",
+                "slot": slot,
+                "quality": "common",
+                "item_key": item_key,
+            }
         armor = ARMOR_LITE.get(key)
         if category_lite and armor:
             if armor.get("category") == "shield":
@@ -609,13 +624,10 @@ def build_starter_items(rule, class_name: str) -> tuple[list[dict], list[dict]]:
         if isinstance(st_item, dict):
             iname = st_item.get("name", "")
             islot = st_item.get("slot", "")
-            if islot:
-                item = make_item(str(iname), str(islot))
-                if item:
-                    equip.append(item)
-                    equipped_weapons += int(item.get("type") == "weapon")
-                else:
-                    inv.append({"name": iname, "qty": 1, "effect": ""})
+            item = make_item(str(iname), str(islot))
+            if item and (islot or item.get("type") == "focus"):
+                equip.append(item)
+                equipped_weapons += int(item.get("type") == "weapon")
             else:
                 inv.append({"name": iname, "qty": 1, "effect": ""})
         else:

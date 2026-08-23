@@ -103,21 +103,32 @@ class CombatResolver:
 
     @staticmethod
     def _weapon(character_sheet: dict[str, Any], action_text: str) -> tuple[dict[str, Any] | None, str]:
-        for equipment in character_sheet.get("equipment", []) or []:
-            if isinstance(equipment, dict) and equipment.get("slot") == "main_hand":
-                name = str(equipment.get("name") or "徒手")
-                return {**equipment, "name": name, "damage": equipment.get("damage", 2)}, name
+        equipment = character_sheet.get("equipment", []) or []
+        weapons: list[dict[str, Any]] = []
+        for item in equipment:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            key = str(item.get("item_key") or canonical_item_key(name) or "").casefold()
+            # ``type`` is authoritative for modern saves. The second branch
+            # preserves old weapon records that predate the type field.
+            is_weapon = item.get("type") == "weapon" or (
+                bool(name) and (key in WEAPON_DAMAGE or name.casefold() in WEAPON_DAMAGE)
+            )
+            if is_weapon:
+                weapons.append({**item, "name": name or "徒手", "damage": item.get("damage", 2)})
+
         normalized_action = action_text.casefold()
-        for name in sorted(WEAPON_DAMAGE, key=lambda value: -len(value)):
-            if name.casefold() in normalized_action:
-                key = name.strip().casefold()
-                item_key = canonical_item_key(name)
-                return {
-                    "name": name,
-                    "damage": WEAPON_DAMAGE[name],
-                    **({"item_key": item_key} if item_key else {}),
-                    **({"damage_dice": WEAPON_DAMAGE_DICE[key]} if key in WEAPON_DAMAGE_DICE else {}),
-                }, name
+        for weapon in weapons:
+            name = str(weapon["name"])
+            key = str(weapon.get("item_key") or canonical_item_key(name) or "").casefold()
+            if (name and name.casefold() in normalized_action) or (key and key in normalized_action):
+                return weapon, name
+        for weapon in weapons:
+            if weapon.get("slot") == "main_hand":
+                return weapon, str(weapon["name"])
+        if weapons:
+            return weapons[0], str(weapons[0]["name"])
         return None, "徒手"
 
     @staticmethod

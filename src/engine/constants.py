@@ -118,6 +118,7 @@ ITEM_KEY_ALIASES: dict[str, str] = {
     "链甲": "chain_mail", "chain mail": "chain_mail", "チェインメイル": "chain_mail",
     "盾牌": "shield", "盾": "shield", "shield": "shield",
     "木盾": "wooden_shield", "wooden shield": "wooden_shield", "木の盾": "wooden_shield",
+    "法器": "arcane_focus", "arcane focus": "arcane_focus", "秘術焦点": "arcane_focus",
 }
 
 

@@ -123,10 +123,14 @@ def test_stable_character_stays_stable_until_healed_or_hurt() -> None:
 
 
 def test_damage_to_stable_character_restarts_downed_and_records_failure() -> None:
-    cs = {"hp": 0, "max_hp": 10, "status": "stable"}
+    cs = {"hp": 0, "max_hp": 10, "status": "stable", "death_saves": {"success": 3, "failure": 1}}
     assert record_death_save_failures(cs, 1) == "recorded"
     assert cs["status"] == "downed"
     assert cs["death_saves"] == {"success": 0, "failure": 1}
+
+    critical = {"hp": 0, "max_hp": 10, "status": "stable", "death_saves": {"success": 3, "failure": 1}}
+    assert record_death_save_failures(critical, 2) == "recorded"
+    assert critical["death_saves"] == {"success": 0, "failure": 2}
 
 
 def test_round_tracker_reuses_same_round_outcome_without_reroll(monkeypatch) -> None:
