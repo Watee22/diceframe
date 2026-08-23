@@ -403,7 +403,7 @@ class RoundProcessor:
             if action.get("user_id") in instance.players
         )
         if instance.combat_state != "none" or explicit_attack:
-            combat_text = self._combat.resolve_combat(instance, actions_text, combat_model)
+            combat_text = self._combat.resolve_combat(instance, actions_text, combat_model, rule)
             if combat_text:
                 actions_text = combat_text + "\n" + actions_text
                 if instance.combat_state == "none" and instance.combat_enemies:

@@ -67,9 +67,12 @@ def test_d20_target_is_clamped_to_dc_cap() -> None:
 def test_builtin_dnd5e_uses_default_dc_cap_twenty() -> None:
     from src.engine.dice import d20_dc_cap
 
+    # dnd5e 显式声明 max_check_dc=30（5e Nearly Impossible）；通用 base_d20 保持 20。
     rule = RuleSystem.load(Path("templates/rules/dnd5e.json"))
     assert rule.dc_table["extreme"] == 25
-    assert d20_dc_cap(rule) == 20
+    assert d20_dc_cap(rule) == 30
+    base = RuleSystem.load(Path("templates/rules/base_d20.json"))
+    assert d20_dc_cap(base) == 20
 
 
 def test_custom_d20_rule_can_raise_dc_cap_explicitly() -> None:

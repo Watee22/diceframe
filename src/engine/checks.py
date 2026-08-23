@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from src.engine.constants import COMBAT_ATTACK_KEYWORDS
-from src.engine.character_utils import armor_value
+from src.engine.character_utils import armor_ac_components, armor_value
 from src.engine.dice import (
     check_d100_bonus,
     coc_success_level,
@@ -485,10 +485,23 @@ def _attack_target_dc(rule: RuleSystem | None, target: dict[str, Any]) -> int | 
     attributes = target.get("attributes") if isinstance(target.get("attributes"), dict) else {}
     attribute = str(target_rule.get("attribute") or "dex")
     attribute_value = int(attributes.get(attribute, 10) or 10)
-    base = int(target_rule.get("base", 10) or 10)
-    total = base + rule.attribute_modifier(attribute_value)
-    if target_rule.get("include_armor", True):
-        total += armor_value(target)
+    dex_mod = rule.attribute_modifier(attribute_value)
+    if rule.armor_model == "category_lite" and target_rule.get("include_armor", True):
+        # D&D 式 Lite：无甲 10+完整 DEX；轻甲基础+DEX；中甲 DEX 封顶；重甲不吃 DEX；盾另加。
+        components = armor_ac_components(target)
+        if components["base"]:
+            armor_base = int(components["base"])
+            cap = components["dex_cap"]
+            dex_part = dex_mod if cap is None else min(dex_mod, int(cap))
+            total = armor_base + dex_part + int(components["shield"])
+        else:
+            # 无已知类别护甲（NPC/敌人直接暴露 armor 数值等可信状态）：回退旧版累加。
+            total = int(target_rule.get("base", 10) or 10) + dex_mod + int(components["shield"]) + armor_value(target)
+    else:
+        base = int(target_rule.get("base", 10) or 10)
+        total = base + dex_mod
+        if target_rule.get("include_armor", True):
+            total += armor_value(target)
     minimum = int(target_rule.get("min", 1) or 1)
     maximum = int(target_rule.get("max", 40) or 40)
     return max(minimum, min(maximum, total))

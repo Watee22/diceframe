@@ -250,14 +250,21 @@ def test_late_game_d20_target_is_capped_and_nineteen_can_succeed() -> None:
         "dice_value": 19,
         "dice_rolls": [19],
     }
-    rule = RuleSystem.load(Path("templates/rules/dnd5e.json"))
+    base = RuleSystem.load(Path("templates/rules/base_d20.json"))
 
-    DiceResolver().resolve_action_check(instance, action, rule)
+    DiceResolver().resolve_action_check(instance, action, base)
 
+    # 通用规则仍把失控 DC 30 钳制到 20，19+3 可以成功
     assert instance.last_check["dc"] == 20
     assert instance.last_check["total"] == 22
     assert instance.last_check["verdict"] == "成功"
 
+    dnd = RuleSystem.load(Path("templates/rules/dnd5e.json"))
+    DiceResolver().resolve_action_check(instance, action, dnd)
+
+    # dnd5e 显式允许 DC 30（近乎不可能），不再钳制到 20
+    assert instance.last_check["dc"] == 30
+    assert instance.last_check["verdict"] == "失败"
 
 def test_confirmed_d20_without_target_still_uses_dc_cap() -> None:
     instance = GameInstance(("web", "room", "bot"))

@@ -9,7 +9,7 @@
 - 必须调用 `dice_checks`；没有任何行动需要检定时传入空的 `checks` 数组。
 - `player`、`attribute`、`skill` 必须逐字使用上下文里已有的 ID/key/名称。不要创造属性、技能或玩家；玩家已经显式选择的属性/技能优先。
 - d20 检定必须填写 `attribute` 和情境 `target`（DC），`skill` 可选。难度应基于情境，不得为了制造戏剧性任意抬高。
-- DC 档位参考：简单 8 / 普通 10 / 困难 15 / 极限 20。系统对 DC 有硬上限；默认 20，并以输入中的 `ruleset.max_check_dc` 为准。
+- DC 档位参考：简单 8 / 普通 10 / 困难 15 / 极限 20。系统对 DC 有硬上限；默认 20，并以输入中的 `ruleset.max_check_dc` 为准。当该上限高于 20 时，25/30 只属于有明确依据的“近乎不可能”情境，不得默认选用。
 - 情境优劣势由你裁量：结合 `scene`、`recent_narration` 与行动的具体处境（如未被察觉地从隐蔽处袭击、被束缚或负伤时行动）判断 `advantage` 取 normal / advantage / disadvantage；不得仅凭某个单词决定，没有明确情境依据时使用 normal。玩家明确声明优势/劣势（或奖励骰/惩罚）时系统会自动识别，无需你重复。
 - d100 技能检定只需填写已有 `skill`；属性检定填写已有 `attribute`。不要把技能名写进 `attribute`，也不要填写 `target`，百分阈值由服务端从角色卡计算。
 - 当前规则 `dice_system=none` 时必须返回空 `checks`。

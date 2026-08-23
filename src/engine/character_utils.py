@@ -137,6 +137,35 @@ def set_hp(character_sheet: dict, hp: int | float, max_hp: int | float | None = 
     return current
 
 
+def armor_ac_components(character_sheet: dict) -> dict[str, Any]:
+    """category_lite 护甲模型的 AC 组件：最高甲基础值、DEX 封顶、盾加值。
+
+    无已知护甲时 base=0，调用方按 10 + 完整 DEX 处理（无甲）。
+    """
+    from src.engine.constants import ARMOR_LITE
+
+    base = 0
+    dex_cap: int | None = None
+    shield = 0
+    equipment = character_sheet.get("equipment")
+    if not isinstance(equipment, list):
+        return {"base": base, "dex_cap": dex_cap, "shield": shield}
+    for item in equipment:
+        if not isinstance(item, dict):
+            continue
+        spec = ARMOR_LITE.get(str(item.get("name") or "").strip().casefold())
+        if not spec:
+            continue
+        if spec.get("category") == "shield":
+            shield = max(shield, int(spec.get("ac_bonus", 2)))
+            continue
+        item_base = int(spec.get("ac_base", 0))
+        if item_base > base:
+            base = item_base
+            dex_cap = spec.get("dex_cap")
+    return {"base": base, "dex_cap": dex_cap, "shield": shield}
+
+
 def armor_value(character_sheet: dict) -> int:
     """Return trusted armor from explicit state or equipped items.
 
@@ -431,7 +460,7 @@ def build_starter_items(rule, class_name: str) -> tuple[list[dict], list[dict]]:
     starter = cls.get("starter_equipment", [])
     if not starter:
         return [], []
-    from src.engine.constants import WEAPON_DAMAGE
+    from src.engine.constants import WEAPON_DAMAGE, WEAPON_DAMAGE_DICE
     equip: list[dict] = []
     inv: list[dict] = []
     for st_item in starter:
@@ -439,14 +468,20 @@ def build_starter_items(rule, class_name: str) -> tuple[list[dict], list[dict]]:
             iname = st_item.get("name", "")
             islot = st_item.get("slot", "")
             if islot:
-                equip.append({"name": iname, "type": "weapon", "damage": WEAPON_DAMAGE.get(iname, 0), "slot": islot, "quality": "common"})
+                item = {"name": iname, "type": "weapon", "damage": WEAPON_DAMAGE.get(iname, 0), "slot": islot, "quality": "common"}
+                if WEAPON_DAMAGE_DICE.get(str(iname).strip().casefold()):
+                    item["damage_dice"] = WEAPON_DAMAGE_DICE[str(iname).strip().casefold()]
+                equip.append(item)
             else:
                 inv.append({"name": iname, "qty": 1, "effect": ""})
         else:
             iname = str(st_item)
             cat = find_item_category(rule.item_categories, iname)
             if cat == "equipment" and iname in WEAPON_DAMAGE and not equip:
-                equip.append({"name": iname, "type": "weapon", "damage": WEAPON_DAMAGE[iname], "slot": "main_hand", "quality": "common"})
+                item = {"name": iname, "type": "weapon", "damage": WEAPON_DAMAGE[iname], "slot": "main_hand", "quality": "common"}
+                if WEAPON_DAMAGE_DICE.get(iname.strip().casefold()):
+                    item["damage_dice"] = WEAPON_DAMAGE_DICE[iname.strip().casefold()]
+                equip.append(item)
             else:
                 inv.append({"name": iname, "qty": 1, "effect": ""})
     return equip, inv

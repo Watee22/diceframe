@@ -369,6 +369,31 @@ class RuleSystem:
         )
 
     @property
+    def damage_mechanic(self) -> dict:
+        """伤害结算能力声明；未配置时保持旧版通用 hp_based 行为。
+
+        - ``armor_reduces_damage``：护甲是否在命中后固定减伤（D&D 式为 False，护甲只影响 AC）。
+        - ``degree_affects_damage``：攻击总值超出目标是否追加伤害（D&D 式为 False）。
+        - ``critical_damage``：``double_total``（旧版总值×2）或
+          ``double_damage_dice``（只翻倍伤害骰，固定修正不翻倍）。
+        """
+        declared = self.template.get("damage_mechanic")
+        if not isinstance(declared, dict):
+            declared = {}
+        critical = str(declared.get("critical_damage") or "double_total").strip()
+        return {
+            "armor_reduces_damage": bool(declared.get("armor_reduces_damage", True)),
+            "degree_affects_damage": bool(declared.get("degree_affects_damage", True)),
+            "critical_damage": critical if critical in {"double_total", "double_damage_dice", "none"} else "double_total",
+        }
+
+    @property
+    def armor_model(self) -> str:
+        """护甲解读模型：sum=旧版累加；category_lite=按类别的 D&D 式护甲等级。"""
+        model = str(self.template.get("armor_model") or "sum").strip()
+        return model if model in {"sum", "category_lite"} else "sum"
+
+    @property
     def combat_model(self) -> str:
         return self.template.get("combat_model", "hp_based")
 

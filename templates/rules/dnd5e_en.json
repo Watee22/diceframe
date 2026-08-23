@@ -9,13 +9,29 @@
   "mechanics": "dnd5e_core",
   "ruleset_level": "assisted",
   "check_mechanic": {
-    "critical": {"success": null, "failure": null}
+    "critical": {"success": null, "failure": null},
+    "attack_critical": {"success": 20, "failure": 1},
+    "attack_target": {
+      "type": "armor_class",
+      "base": 10,
+      "attribute": "dex",
+      "include_armor": true,
+      "min": 1,
+      "max": 40
+    }
   },
   "dc_table": {
     "easy": 10,
     "normal": 15,
     "hard": 20,
     "extreme": 25
+  },
+  "max_check_dc": 30,
+  "armor_model": "category_lite",
+  "damage_mechanic": {
+    "armor_reduces_damage": false,
+    "degree_affects_damage": false,
+    "critical_damage": "double_damage_dice"
   },
   "attributes": [
     {"key": "str", "name": "Strength", "min": 3, "max": 20},
@@ -72,7 +88,7 @@
     "Warlock": ["Eldritch Blast", "Pact Boon", "Devil's Sight", "Charm Person"],
     "Wizard": ["Fireball", "Magic Missile", "Shield", "Counterspell"]
   },
-  "gm_prompt_appendix": "You run Dungeons & Dragons 5th edition rules. Characters have a proficiency bonus (proficiency_bonus = 2 + (level-1)//4); check format: (Strength check: d20 + ability modifier + proficiency bonus vs DC). Advantage/disadvantage follow D&D 5e: advantage rolls 2d20 take the higher, disadvantage rolls 2d20 take the lower; when both apply they cancel and do not stack. In combat: an attack roll determines a hit (d20 + Strength/Dexterity modifier + proficiency bonus vs AC = 10 + Dexterity modifier + armor); on a hit, roll damage dice + ability modifier. Each round every player may move 30 feet and take 1 action or 1 bonus action. Casters expend spell slots (a 1st-level character has two 1st-level slots). A short rest restores some HP (roll a Hit Die + Constitution modifier); a long rest fully restores HP and recovers spell slots.",
+  "gm_prompt_appendix": "You run Dungeons & Dragons 5th edition rules. Characters have a proficiency bonus (proficiency_bonus = 2 + (level-1)//4); check format: (Strength check: d20 + ability modifier + proficiency bonus vs DC). Advantage/disadvantage follow D&D 5e: advantage rolls 2d20 take the higher, disadvantage rolls 2d20 take the lower; when both apply they cancel and do not stack. In combat: an attack roll determines a hit (d20 + Strength/Dexterity modifier + proficiency bonus vs AC, with AC set by armor category and Dexterity); on a hit, roll damage dice + ability modifier, and a critical doubles only the damage dice, never the fixed modifier. DC 25/30 is reserved for clearly justified nearly-impossible situations and must not be the default. Each round a character can normally move and take 1 action; a bonus action is only available when a class feature or spell explicitly grants it. Only classes with a spellcasting feature use spell slots, and their count comes from the character's current class/level resources; never invent spell slots for non-casters. A short rest restores some HP (roll a Hit Die + Constitution modifier); a long rest fully restores HP and recovers spell slots.",
   "difficulty_instructions": {
     "轻松": "Monster CR 1 below party level, DC -2, plentiful loot",
     "标准": "Monster CR equals party level, DC as normal, reasonable loot",

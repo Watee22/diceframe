@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from .character_utils import armor_value, set_hp
+from .dice import roll
 from .dice_rng import DiceResult
 
 logger = logging.getLogger("trpg")
@@ -80,26 +81,41 @@ def calc_hp_based_damage(
     attr_modifier: int = 0,
     target_armor: int = 0,
     check_result: Mapping[str, Any] | None = None,
+    *,
+    mechanic: Mapping[str, Any] | None = None,
+    dice_total: int | None = None,
 ) -> int:
     """计算 HP 模型的命中伤害，不修改角色状态。
 
-    骰面浮动和暴击都只读取已有 ``CheckResult``。该函数本身不负责
-    判定是否命中；外层 ``calculate_attack_damage`` 先执行成败门禁。
+    ``dice_total`` 由调用方掷伤害骰得到（规则声明 double_damage_dice 时，
+    暴击翻倍骰子也在调用方完成）；此时只加固定修正，不再套旧版总值×2。
+    未提供时走旧版固定伤害路径，行为与历史实现完全一致。
     """
-    base = int(weapon_damage) + int(attr_modifier)
-    if check_result:
-        if bool(check_result.get("is_fumble")):
-            return 0
-        if bool(check_result.get("is_critical")):
-            base *= 2
-        elif str(check_result.get("dice") or check_result.get("dice_system") or "").lower() == "d20":
-            resolved_total = int(
-                check_result.get("total")
-                or check_result.get("roll")
-                or 10
-            )
-            base += (resolved_total - 10) // 3
-    return max(1, base - int(target_armor))
+    mech = dict(mechanic or {})
+    armor_reduces = bool(mech.get("armor_reduces_damage", True))
+    degree = bool(mech.get("degree_affects_damage", True))
+    crit_mode = str(mech.get("critical_damage") or "double_total")
+    if check_result and bool(check_result.get("is_fumble")):
+        return 0
+    if dice_total is not None:
+        base = int(dice_total) + int(attr_modifier)
+    else:
+        base = int(weapon_damage) + int(attr_modifier)
+        if check_result:
+            if bool(check_result.get("is_critical")) and crit_mode != "none":
+                base *= 2
+            elif degree and str(
+                check_result.get("dice") or check_result.get("dice_system") or ""
+            ).lower() == "d20":
+                resolved_total = int(
+                    check_result.get("total")
+                    or check_result.get("roll")
+                    or 10
+                )
+                base += (resolved_total - 10) // 3
+    if armor_reduces:
+        base -= int(target_armor)
+    return max(1, base)
 
 
 def calc_lethal_damage(
@@ -120,6 +136,8 @@ def calculate_attack_damage(
     target_armor: int = 0,
     combat_model: str = "hp_based",
     same_faction: bool = False,
+    mechanic: Mapping[str, Any] | None = None,
+    dice_total: int | None = None,
 ) -> int:
     """消费权威检定并应用全部伤害修正；不修改 HP。"""
     if combat_model == "narrative" or not _check_succeeded(check_result):
@@ -134,6 +152,8 @@ def calculate_attack_damage(
             attr_modifier,
             target_armor,
             check_result,
+            mechanic=mechanic,
+            dice_total=dice_total,
         )
     if same_faction and damage > 0:
         damage //= 2
@@ -164,6 +184,7 @@ def resolve_attack(
     attacker_uid: str = "",
     target_ref: str = "",
     target_name: str = "",
+    rule: Any | None = None,
 ) -> AttackResult:
     """基于已有 ``CheckResult`` 结算一次攻击。
 
@@ -173,6 +194,19 @@ def resolve_attack(
     del difficulty  # 难度已在 CheckResult 的 DC/阈值中结算。
     weapon_damage = int(weapon.get("damage", 1) or 1) if weapon else 1
     weapon_name = str(weapon.get("name", "徒手") or "徒手") if weapon else "徒手"
+    mechanic = rule.damage_mechanic if rule is not None else None
+    dice_total: int | None = None
+    weapon_dice = str(weapon.get("damage_dice") or "").strip() if weapon else ""
+    if (
+        mechanic is not None
+        and mechanic["critical_damage"] == "double_damage_dice"
+        and weapon_dice
+        and check_result is not None
+    ):
+        # D&D 式暴击：翻倍伤害骰，不翻倍固定修正。
+        dice_total = roll(weapon_dice).natural
+        if bool(check_result.get("is_critical")):
+            dice_total += roll(weapon_dice).natural
     resolved_target_name = target_name or str(
         target.get("character_name") or target.get("name") or "目标"
     )
@@ -205,6 +239,8 @@ def resolve_attack(
         target_armor=target_armor,
         combat_model=combat_model,
         same_faction=same_faction,
+        mechanic=mechanic,
+        dice_total=dice_total,
     )
     hp_before, hp_after = apply_damage(target, calculated_damage)
     damage = hp_before - hp_after

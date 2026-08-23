@@ -137,7 +137,7 @@ class CombatResolver:
             "round": instance.round_number,
         })
 
-    def resolve_combat(self, instance: GameInstance, actions_text: str, combat_model: str) -> str:
+    def resolve_combat(self, instance: GameInstance, actions_text: str, combat_model: str, rule: Any | None = None) -> str:
         """只结算有唯一权威攻击 ``CheckResult`` 的行动。"""
         del actions_text  # 禁止从多人汇总文本猜攻击者、武器或目标。
         results: list[tuple[AttackResult, dict[str, Any]]] = []
@@ -208,6 +208,7 @@ class CombatResolver:
                     attacker_uid=actor_uid,
                     target_ref=target_ref,
                     target_name=target_name,
+                    rule=rule,
                 )
                 # 战斗 outcome 属于行动的下游状态，不回写或改动
                 # 已形成的 CheckResult。进程重试时复用它，既不重掷
