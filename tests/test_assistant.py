@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -25,10 +26,11 @@ class FakeLLMClient:
 
 
 class FakeAPI:
-    def __init__(self, plugins=None, llm_client=None, config_error=None):
+    def __init__(self, plugins=None, llm_client=None, config_error=None, data_dir: Path | None = None):
         self._plugins = plugins
         self._llm_client = llm_client
         self._config_error = config_error
+        self._reg = SimpleNamespace(save_dir=(data_dir or Path("data")) / "saves")
         self.text_gen_max_tokens = 1024
 
     def list_plugins(self):
@@ -106,6 +108,11 @@ def test_build_user_message_empty():
     assert assistant_service._build_user_message([]) == ""
 
 
+def test_log_diagnosis_requires_explicit_runtime_log_intent():
+    assert assistant_service._wants_runtime_log_context("检查运行日志，帮我找问题") is True
+    assert assistant_service._wants_runtime_log_context("怎么查看剧情日志") is False
+
+
 # ---- chat_stream ----
 
 @pytest.mark.asyncio
@@ -148,6 +155,35 @@ async def test_chat_stream_deltas_and_done():
     assert '"delta": "你"' in text
     assert '"delta": "好"' in text
     assert "event: done" in text
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_sends_only_redacted_log_context_to_model(monkeypatch, tmp_path: Path):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    monkeypatch.setenv("TRPG_LOG_DIR", str(log_dir))
+    (log_dir / "diceframe.log").write_text(
+        'WARNING api_key="sk-private" model rejected DeepSeek-V4\n',
+        encoding="utf-8",
+    )
+    client = FakeLLMClient(deltas=["请修改模型名称"])
+    api = FakeAPI(llm_client=client, data_dir=tmp_path / "data")
+    resp = FakeStreamResponse()
+
+    await assistant_service.chat_stream(
+        api,
+        resp,
+        [{"role": "user", "content": "检查运行日志，帮我找出问题"}],
+        "zh-CN",
+    )
+
+    system = client.calls[0]["system"]
+    assert "运行日志（已脱敏" in system
+    assert "model rejected DeepSeek-V4" in system
+    assert "sk-private" not in system
+    assert "[REDACTED]" in system
+    response_text = b"".join(resp.written).decode()
+    assert "DiceFrame 运行日志（已脱敏）" in response_text
 
 
 @pytest.mark.asyncio

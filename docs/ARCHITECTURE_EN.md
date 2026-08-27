@@ -60,6 +60,8 @@ Docker Update schema 1 binds the application version, `linux-amd64`, CPython ABI
 
 Runtime logs are owned centrally by `src/runtime_logging.py`; launchers and business services must not implement separate rotation or retention policies. Portable logs live under the installation-root `logs/`, managed Docker logs under persistent `data/logs/`, and the default retention is 30 days. The clear operation may remove only DiceFrame runtime logs and must never touch game history, saves, or third-party logs.
 
+Only when the owner explicitly asks DF Assistant to inspect runtime logs may `src/runtime_diagnostics.py` read the two most recent DiceFrame log files. Local processing is limited to credential redaction, successful-poll filtering, duplicate compaction, and context bounds; the configured model performs the diagnosis. At most 24,000 characters are sent, arbitrary files are inaccessible, and log content is always treated as data rather than instructions.
+
 ## Frontend and Rule Boundaries
 
 The backend materializes V2 locales and the frontend renders the returned payload; the frontend does not reimplement Content V2 locale architecture. D&D using d20 is not the same as changing generic d20 behavior. D&D-specific behavior remains inside the D&D boundary.

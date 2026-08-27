@@ -16,6 +16,7 @@ const draft = ref('')
 const listEl = ref<HTMLElement | null>(null)
 
 const quickQuestions = () => [
+  t('assistantQuickLogs'),
   t('assistantQuickApi'),
   t('assistantQuickPlugin'),
   t('assistantQuickPlayers'),
@@ -82,6 +83,7 @@ function ask(question: string) {
           </button>
         </div>
         <small>{{ t('assistantVersionHint') }}</small>
+        <small>{{ t('assistantLogPrivacyHint') }}</small>
       </div>
 
       <article
@@ -272,6 +274,12 @@ function ask(question: string) {
   font-size: 12px;
   line-height: 1.4;
   text-align: left;
+}
+
+.assistant-quick-grid button:first-child {
+  grid-column: 1 / -1;
+  border-color: color-mix(in srgb, var(--df-accent) 46%, var(--df-border-soft));
+  background: color-mix(in srgb, var(--df-accent) 10%, var(--df-control-bg));
 }
 
 .assistant-message {

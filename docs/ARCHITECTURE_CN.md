@@ -60,6 +60,8 @@ Docker Update schema 1 绑定版本、`linux-amd64`、CPython ABI、launcher sch
 
 运行日志统一由 `src/runtime_logging.py` 管理，launcher 和业务服务不得各自实现轮转或保留策略。便携版日志位于安装根目录 `logs/`，托管 Docker 位于持久化 `data/logs/`，默认保留 30 天；清理接口只允许删除 DiceFrame 运行日志，不得触碰对局记录、存档或第三方日志。
 
+DF 助手仅在 owner 主动提出检查运行日志时，经 `src/runtime_diagnostics.py` 读取 DiceFrame 自身最近两个日志文件；本地只负责凭据脱敏、成功轮询过滤、重复事件压缩和上下文限额，故障判断仍由当前配置的模型完成。发送上下文最多 24,000 字符，不得读取任意文件，也不得把日志内容当成指令。
+
 ## Frontend 与规则边界
 
 Backend materializes V2 locale，frontend 只渲染返回字段，不重新实现 Content V2 locale architecture。D&D 如何使用 d20 不等于修改 generic d20 本身；D&D 专属行为必须留在 D&D 边界内。
