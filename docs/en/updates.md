@@ -24,6 +24,8 @@ If the new version cannot start correctly, DiceFrame automatically returns to th
 
 Portable installations keep at most two application payloads. The root-level `app/` and `python/` directories from the original archive count as the first payload and remain as the rollback copy after the first update. After the second and later successful updates, only the current and previous payloads under `versions/` are kept, and the legacy root-level `app/` and `python/` directories are removed. `data/`, `logs/`, and the root launcher are not version payloads and are never removed by this cleanup. User-installed plugin source code lives under `data/plugin-packages/` and is preserved with `data/` across versions; `app/plugins/` holds only built-in and example plugins and is cleared with old version payloads. If the current payload is unavailable, the launcher uses the version pointer to try the previous payload.
 
+DiceFrame keeps console output while also writing persistent runtime logs. Windows portable installations use the root-level `logs/` directory, managed Docker uses persistent `data/logs/`, and source runs default to the project-root `logs/` directory. Logs rotate daily and retain the latest 30 days. They can also be removed from **Settings → Advanced → Runtime logs**. Runtime logs are independent from game history, chat history, and saves.
+
 If Settings shows a new version but no Apply button, manually download the latest portable package from GitHub Releases once. Later updates can then be applied from Settings.
 
 ## Source Release

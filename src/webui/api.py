@@ -474,6 +474,12 @@ class WebAPI:
     async def check_updates(self, include_prerelease: bool | None = None) -> dict[str, Any]:
         return await system.check_updates(self, include_prerelease)
 
+    def runtime_log_status(self) -> dict[str, Any]:
+        return system.runtime_log_status(self)
+
+    def clear_runtime_logs(self) -> dict[str, Any]:
+        return system.clear_runtime_logs(self)
+
     def _load_world_template(self, world_id: str, language: str = "") -> dict[str, Any] | None:
         """按 world_id 读取世界模板；不存在或非法时返回 None。"""
         if not self._worlds_dir:

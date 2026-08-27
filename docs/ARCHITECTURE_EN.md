@@ -58,6 +58,8 @@ Windows source/portable and managed Docker share the download state machine in `
 
 Docker Update schema 1 binds the application version, `linux-amd64`, CPython ABI, launcher schema, base runtime API, and `data_rollback_safe`. The package builder, application updater, and launcher reuse the same contract validation; checksum, platform, ABI, runtime, data-rollback declaration, and path-safety failures are all fail closed. Versioned application payloads live under `data/_updater/docker-versions/`; business-data migrations remain owned by `src/migrations/`, and rolling back application files never pretends to roll back a data schema.
 
+Runtime logs are owned centrally by `src/runtime_logging.py`; launchers and business services must not implement separate rotation or retention policies. Portable logs live under the installation-root `logs/`, managed Docker logs under persistent `data/logs/`, and the default retention is 30 days. The clear operation may remove only DiceFrame runtime logs and must never touch game history, saves, or third-party logs.
+
 ## Frontend and Rule Boundaries
 
 The backend materializes V2 locales and the frontend renders the returned payload; the frontend does not reimplement Content V2 locale architecture. D&D using d20 is not the same as changing generic d20 behavior. D&D-specific behavior remains inside the D&D boundary.

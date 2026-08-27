@@ -13,6 +13,7 @@ from aiohttp import web
 
 sys.path.insert(0, str(Path(__file__).parent))
 from src.runtime_env import load_project_env
+from src.runtime_logging import RETENTION_DAYS, configure_runtime_logging
 
 load_project_env(Path(__file__).resolve().with_name(".env"))
 
@@ -1388,6 +1389,8 @@ def register_routes(application: web.Application) -> None:
 register_routes(app)
 
 if __name__ == "__main__":
+    runtime_log_path = configure_runtime_logging(DATA_DIR)
+    logger.info("运行日志写入 %s（保留 %s 天）", runtime_log_path, RETENTION_DAYS)
     print(f"DiceFrame WebUI: http://127.0.0.1:{PORT}  (host={HOST})")
     if not API_KEY:
         print("请在 WebUI 设置页填写 API Key")

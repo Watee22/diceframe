@@ -5,11 +5,14 @@ from __future__ import annotations
 import logging
 import os
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
 from src.version import DEFAULT_UPDATE_REPOSITORY, __version__
+from src.runtime_logging import clear_runtime_logs as clear_logs
+from src.runtime_logging import runtime_log_status as log_status
 
 if TYPE_CHECKING:
     from src.webui.api import WebAPI
@@ -26,6 +29,18 @@ _VERSION_RE = re.compile(
 
 class NoReleaseError(RuntimeError):
     """Raised when the repository exists but has no public releases yet."""
+
+
+def _data_dir(api: "WebAPI") -> Path:
+    return api._reg.save_dir.parent
+
+
+def runtime_log_status(api: "WebAPI") -> dict[str, Any]:
+    return log_status(_data_dir(api))
+
+
+def clear_runtime_logs(api: "WebAPI") -> dict[str, Any]:
+    return clear_logs(_data_dir(api))
 
 
 def _parse_version(value: str) -> tuple[tuple[int, int, int], tuple[str, ...] | None] | None:

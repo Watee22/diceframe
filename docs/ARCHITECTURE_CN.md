@@ -58,6 +58,8 @@ Windows source/portable 与托管 Docker 共用 `src/webui/services/updater.py` 
 
 Docker Update schema 1 绑定版本、`linux-amd64`、CPython ABI、launcher schema、基础 runtime API 与 `data_rollback_safe`。更新包构建器、应用 updater 和 launcher 必须复用同一 contracts 校验；checksum、平台、ABI、runtime、数据回滚声明或路径安全失败全部 fail closed。版本化应用副本位于 `data/_updater/docker-versions/`，业务数据迁移仍归 `src/migrations/`，程序目录回滚不得冒充数据 schema 回滚。
 
+运行日志统一由 `src/runtime_logging.py` 管理，launcher 和业务服务不得各自实现轮转或保留策略。便携版日志位于安装根目录 `logs/`，托管 Docker 位于持久化 `data/logs/`，默认保留 30 天；清理接口只允许删除 DiceFrame 运行日志，不得触碰对局记录、存档或第三方日志。
+
 ## Frontend 与规则边界
 
 Backend materializes V2 locale，frontend 只渲染返回字段，不重新实现 Content V2 locale architecture。D&D 如何使用 d20 不等于修改 generic d20 本身；D&D 专属行为必须留在 D&D 边界内。

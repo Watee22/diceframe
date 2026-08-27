@@ -48,6 +48,14 @@ type ProviderModelGroup = { name: string; models: string[] }
 type SystemStatusItem = { label: string; value: string; detail: string; tone: StatusTone; icon: Component }
 type RoutingStatusItem = SystemStatusItem & { enabled: boolean; order: number }
 type SettingsSection = { id: SettingsSectionId; labelKey: MessageKey; icon: Component }
+type RuntimeLogStatus = {
+  ok: boolean
+  retention_days: number
+  file_count: number
+  total_bytes: number
+  cleared_files?: number
+  cleared_bytes?: number
+}
 
 const store = useSettingsStore()
 const route = useRoute()
@@ -84,6 +92,44 @@ const backgroundBusy = ref<BackgroundSlot | 'all' | ''>('')
 const restartBusy = ref(false)
 const hubPreferences = ref<HubPreferences | null>(null)
 const hubPrivacyBusy = ref(false)
+const runtimeLogStatus = ref<RuntimeLogStatus | null>(null)
+const runtimeLogBusy = ref(false)
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
+  const amount = value / (1024 ** index)
+  return `${amount >= 10 || index === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`
+}
+
+async function loadRuntimeLogStatus() {
+  try {
+    runtimeLogStatus.value = await api<RuntimeLogStatus>('/system/runtime-logs')
+  } catch {
+    runtimeLogStatus.value = null
+  }
+}
+
+async function clearRuntimeLogs() {
+  const ok = await confirm({
+    title: t('runtimeLogsClearTitle'),
+    content: t('runtimeLogsClearConfirm'),
+    positiveText: t('runtimeLogsClearAction'),
+    type: 'warning',
+  })
+  if (!ok) return
+  runtimeLogBusy.value = true
+  try {
+    const result = await api<RuntimeLogStatus>('/system/runtime-logs/clear', { method: 'POST' })
+    runtimeLogStatus.value = result
+    toast.success(t('runtimeLogsCleared', { size: formatBytes(result.cleared_bytes || 0) }))
+  } catch (error: unknown) {
+    toast.error(errorMessage(error))
+  } finally {
+    runtimeLogBusy.value = false
+  }
+}
 
 function switchBackend() {
   const nextBackendUrl = normalizeBackendUrl(backendUrl.value)
@@ -937,6 +983,7 @@ onMounted(() => {
   })()
   void refreshStatus()
   void loadHubPreferences()
+  void loadRuntimeLogStatus()
   syncRouteTarget()
 })
 watch(() => [route.query.section, route.query.focus], syncRouteTarget)
@@ -1892,6 +1939,22 @@ function redownloadUpdatePackage() {
           </div>
 
           <div v-show="section === 'advanced'" class="settings-pane advanced-settings-pane">
+            <section class="advanced-section advanced-section-wide runtime-logs-section">
+              <header class="advanced-section-head">
+                <NIcon :component="TrashOutline" />
+                <div><h3>{{ t('runtimeLogsTitle') }}</h3><p>{{ t('runtimeLogsHint') }}</p></div>
+              </header>
+              <div class="advanced-row">
+                <div>
+                  <strong>{{ t('runtimeLogsRetention', { days: runtimeLogStatus?.retention_days || 30 }) }}</strong>
+                  <small>{{ runtimeLogStatus ? t('runtimeLogsUsage', { count: runtimeLogStatus.file_count, size: formatBytes(runtimeLogStatus.total_bytes) }) : t('runtimeLogsUnavailable') }}</small>
+                </div>
+                <NButton type="error" secondary :loading="runtimeLogBusy" @click="clearRuntimeLogs">
+                  <template #icon><NIcon :component="TrashOutline" /></template>
+                  {{ t('runtimeLogsClearAction') }}
+                </NButton>
+              </div>
+            </section>
             <section class="advanced-section advanced-section-wide test-timeout-section">
               <header class="advanced-section-head">
                 <NIcon :component="ServerOutline" />
