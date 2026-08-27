@@ -219,7 +219,7 @@ jobs:
           archive="dist/source/DiceFrame-v${version}-docker-update-linux-amd64.zip"
           test -s "$archive"
           cp "$archive" dist/docker-update.zip
-          (cd dist && sha256sum docker-update.zip > docker-update.sha256)
+          (cd dist && sha256sum docker-update.zip | sed 's/  docker-update\.zip$/  update.zip/' > docker-update.sha256)
           seed_sha="$(sha256sum "$archive" | cut -d' ' -f1)"
           owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
           tags="ghcr.io/${owner}/diceframe:${version},docker.io/falconku/diceframe:${version}"

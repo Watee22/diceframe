@@ -111,6 +111,21 @@ def test_launcher_installs_verified_seed_and_commits_relative_pointer(tmp_path, 
     assert not Path(pointer["relative_dir"]).is_absolute()
 
 
+def test_launcher_seed_checksum_is_bound_to_container_filename(tmp_path):
+    archive = _archive(tmp_path, "2.4.0")
+    archive = archive.rename(tmp_path / "update.zip")
+    checksum = tmp_path / "update.sha256"
+    checksum.write_text(
+        f"{contracts.file_sha256(archive)}  update.zip\n", encoding="utf-8",
+    )
+    launcher = DockerLauncher(tmp_path / "runtime", archive, checksum)
+
+    seed_dir, manifest = launcher.ensure_seed()
+
+    assert manifest["version"] == "2.4.0"
+    assert seed_dir.is_dir()
+
+
 def test_launcher_commits_healthy_candidate_and_rolls_back_failed_one(tmp_path, monkeypatch):
     archive = _archive(tmp_path, "2.4.0")
     checksum = tmp_path / "update.sha256"

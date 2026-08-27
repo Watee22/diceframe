@@ -61,7 +61,7 @@ jobs:
           (cd dist/source && sha256sum --check --ignore-missing SHA256SUMS)
           python scripts/validate_docker_update.py "$archive" --version "$version"
           cp "$archive" dist/docker-update.zip
-          (cd dist && sha256sum docker-update.zip > docker-update.sha256)
+          (cd dist && sha256sum docker-update.zip | sed 's/  docker-update\.zip$/  update.zip/' > docker-update.sha256)
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
