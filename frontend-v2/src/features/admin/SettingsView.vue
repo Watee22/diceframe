@@ -1939,7 +1939,7 @@ function redownloadUpdatePackage() {
           </div>
 
           <div v-show="section === 'advanced'" class="settings-pane advanced-settings-pane">
-            <section class="advanced-section advanced-section-wide runtime-logs-section">
+            <section class="advanced-section runtime-logs-section">
               <header class="advanced-section-head">
                 <NIcon :component="TrashOutline" />
                 <div><h3>{{ t('runtimeLogsTitle') }}</h3><p>{{ t('runtimeLogsHint') }}</p></div>
@@ -1955,7 +1955,7 @@ function redownloadUpdatePackage() {
                 </NButton>
               </div>
             </section>
-            <section class="advanced-section advanced-section-wide test-timeout-section">
+            <section class="advanced-section test-timeout-section">
               <header class="advanced-section-head">
                 <NIcon :component="ServerOutline" />
                 <div><h3>{{ t('testTimeoutTitle') }}</h3><p>{{ t('testTimeoutHint') }}</p></div>
