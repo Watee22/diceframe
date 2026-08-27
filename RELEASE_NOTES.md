@@ -1,8 +1,8 @@
-# DiceFrame v2.4.0-beta.2
+# DiceFrame v2.4.0-beta.3
 
 ## 中文
 
-DiceFrame v2.4.0-beta.2 是预览版更新，主要改进运行问题排查和更新包兼容性。
+DiceFrame v2.4.0-beta.3 是预览版更新，主要改进运行问题排查和更新包兼容性。
 
 ### 本次更新
 
@@ -20,15 +20,15 @@ DiceFrame v2.4.0-beta.2 是预览版更新，主要改进运行问题排查和�
 
 ### 下载与校验
 
-- Windows 便携版：`DiceFrame-v2.4.0-beta.2-windows-portable.zip`
-- Windows 源码包：`DiceFrame-v2.4.0-beta.2-windows.zip`
-- Docker 托管更新：`DiceFrame-v2.4.0-beta.2-docker-update-linux-amd64.zip`
+- Windows 便携版：`DiceFrame-v2.4.0-beta.3-windows-portable.zip`
+- Windows 源码包：`DiceFrame-v2.4.0-beta.3-windows.zip`
+- Docker 托管更新：`DiceFrame-v2.4.0-beta.3-docker-update-linux-amd64.zip`
 - 手动下载时，请使用 `SHA256SUMS` 统一校验。
 - 从 `2.3.2` 等旧版本自动升级时，旧更新器不识别 `SHA256SUMS`，因此会跳过包校验；升级功能仍可用，升级后新版更新器会恢复校验。
 
 ## English
 
-DiceFrame v2.4.0-beta.2 is a preview release focused on runtime troubleshooting and update-package compatibility.
+DiceFrame v2.4.0-beta.3 is a preview release focused on runtime troubleshooting and update-package compatibility.
 
 ### What's new
 
@@ -46,8 +46,8 @@ DiceFrame v2.4.0-beta.2 is a preview release focused on runtime troubleshooting 
 
 ### Downloads and verification
 
-- Windows portable: `DiceFrame-v2.4.0-beta.2-windows-portable.zip`
-- Windows source: `DiceFrame-v2.4.0-beta.2-windows.zip`
-- Managed Docker update: `DiceFrame-v2.4.0-beta.2-docker-update-linux-amd64.zip`
+- Windows portable: `DiceFrame-v2.4.0-beta.3-windows-portable.zip`
+- Windows source: `DiceFrame-v2.4.0-beta.3-windows.zip`
+- Managed Docker update: `DiceFrame-v2.4.0-beta.3-docker-update-linux-amd64.zip`
 - For manual downloads, verify all archives with `SHA256SUMS`.
 - When upgrading automatically from `2.3.2` or another older version, the legacy updater does not understand `SHA256SUMS` and therefore skips package verification. The update still works; verification resumes after the new updater is installed.
